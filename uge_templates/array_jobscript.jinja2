@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -V
+#$ -sync y
+#$ -N {{ jobname }}
+#$ -o {{ logdir }}/{{ jobname }}.o
+#$ -e {{ logdir }}/{{ jobname }}.e
+#$ -l s_vmem={{ memGB }}G
+#$ -l mem_req={{ memGB }}G
+#$ -t 1-{{ jobnum }}
+{%-if queue %}
+#$ -q {{ queue }}
+{%- endif %}
+
+sed -n ${SGE_TASK_ID}p {{ jobList }} | bash
+
+

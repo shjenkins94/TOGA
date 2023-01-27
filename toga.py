@@ -30,6 +30,7 @@ from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import _collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import _add_transcripts_to_missing
+from uge_templates.write_uge_jobscripts.py import write_jobscripts
 
 # from modules.common import eprint
 from modules.stitch_fragments import stitch_scaffolds
@@ -45,6 +46,7 @@ U12_FILE_COLS = 3
 U12_AD_FIELD = {"A", "D"}
 ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
+UGE_LOG_DIR_NAME = "cluster_logs"
 NEXTFLOW = "nextflow"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
 ITER_DURATION = 60  # CESAR jobs check interval
@@ -86,6 +88,7 @@ class Toga:
         self.temp_files = []  # remove at the end, list of temp files
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
+        self.uge = args.uge
         self.para = args.para
         self.__check_args_correctness(args)
         self.__modules_addr()
@@ -95,6 +98,7 @@ class Toga:
         self.version = self.__get_version()
         self.para_bigmem = args.para_bigmem
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
+        self.uge_log_dir = self.__get_uge_log_dir(args.uge_log)
         self.nextflow_config_dir = args.nextflow_config_dir
         if args.cesar_bigmem_config:
             self.nextflow_bigmem_config = os.path.abspath(args.cesar_bigmem_config)
@@ -392,6 +396,16 @@ class Toga:
         else:
             os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
             return nf_dir_arg
+    
+    def __get_uge_log_dir(self, uge_log_arg):
+        """Define UGE log directory"""
+        if uge_log_arg is None:
+            default_dir = os.path.join(self.LOCATION, UGE_LOG_DIR_NAME)
+            os.mkdir(default_dir) if not os.path.isdir(default_dir) else None
+            return default_dir
+        else:
+            os.mkdir(uge_log_arg) if not os.path.isdir(uge_log_arg) else None
+            return uge_log_arg
 
     def __check_2bit_file(self, two_bit_file, chroms_sizes, chrom_file):
         """Check that 2bit file is readable."""
@@ -636,7 +650,7 @@ class Toga:
             imports_not_found = True
 
         not_nf = shutil.which(NEXTFLOW) is None
-        if not self.para and not_nf:
+        if not (self.para or self.uge) and not_nf:
             msg = (
                 "Error! Cannot fild nextflow executable. Please make sure you "
                 "have a nextflow binary in a directory listed in your $PATH"
@@ -686,6 +700,14 @@ class Toga:
             self.die(
                 "Conflict: --para and --nf_dir should not be used at the same time"
             )
+        if self.uge and self.nextflow_config_dir:
+            self.die(
+                "Conflict: --uge and --nf_dir should not be used at the same time"
+            )
+        if self.uge and self.para:
+            self.die(
+                "Conflict: --uge and --para should not be used at the same time"
+            )            
         # check that required config files are here
         if not os.path.isdir(self.nextflow_config_dir):
             self.die(
@@ -757,23 +779,23 @@ class Toga:
 
         # 2) extract chain features: parallel process
         print("#### STEP 2: Extract chain features: parallel step\n")
-        self.__extract_chain_features()
+        self.__extract_chain_features() #CHECK
         self.__time_mark("Chain jobs done")
 
         # 3) create chain features dataset
         print("#### STEP 3: Merge step 2 output\n")
-        self.__merge_chains_output()
+        self.__merge_chains_output() #CHECK
         self.__time_mark("Chains output merged")
 
         # 4) classify chains as orthologous, paralogous, etc using xgboost
         print("#### STEP 4: Classify chains using gradient boosting model\n")
-        self.__classify_chains()
+        self.__classify_chains() #CHECK
         self.__time_mark("Chains classified")
 
         # 5) create cluster jobs for CESAR2.0
         print("#### STEP 5: Generate CESAR jobs")
         self.__precompute_data_for_opt_cesar()
-        self.__split_cesar_jobs()
+        self.__split_cesar_jobs() #CHECK
         self.__time_mark("Split cesar jobs done")
 
         # 6) Create bed track for processed pseudogenes
@@ -784,31 +806,31 @@ class Toga:
         print(
             "#### STEP 7: Execute CESAR jobs: parallel step (the most time consuming)\n"
         )
-        self.__run_cesar_jobs()
+        self.__run_cesar_jobs() #CHECK
         self.__time_mark("Cesar jobs done")
         self.__check_cesar_completeness()
 
         # 8) parse CESAR output, create bed / fasta files
         print("#### STEP 8: Merge STEP 7 output\n")
-        self.__merge_cesar_output()
+        self.__merge_cesar_output() #CHECK
         self.__time_mark("Merged cesar output")
 
         # 9) classify projections/genes as lost/intact
         # also measure projections confidence levels
         print("#### STEP 9: Gene loss pipeline classification\n")
-        self.__transcript_quality()  # maybe remove -> not used anywhere
-        self.__gene_loss_summary()
+        self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
+        self.__gene_loss_summary() #CHECK
         self.__time_mark("Got gene loss summary")
 
         # TODO: missing genes! no chain chrom???
         # 10) classify genes as one2one, one2many, etc orthologs
         print("#### STEP 10: Create orthology relationships table\n")
-        self.__orthology_type_map()
+        self.__orthology_type_map() #CHECK
 
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         print("#### STEP 11: Cleanup: merge parallel steps output files")
-        self.__merge_split_files()
-        self.__check_crashed_cesar_jobs()
+        self.__merge_split_files() #CHECK
+        self.__check_crashed_cesar_jobs() #CHECK
         # Everything is done
 
         self.__time_mark("Everything is done")
@@ -904,6 +926,7 @@ class Toga:
         # collect transcripts not intersected at all here
         self._transcripts_not_intersected = self.__get_fst_col(rejected_path)
 
+
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
         # get timestamp to name the project and create a dir for that
@@ -914,8 +937,26 @@ class Toga:
         print(f"Extract chain features, project name: {project_name}")
         print(f"Project path: {project_path}")
 
+
         if self.para:  # run jobs with para, skip nextflow
             cmd = f'para make {project_name} {self.chain_cl_jobs_combined} -q="short"'
+            print(f"Calling {cmd}")
+            rc = subprocess.call(cmd, shell=True)
+        # If using UGE create jobscript
+        elif self.uge:
+            job_name = f"{self.project_name}_chain_feats"
+            self.chain_cl_jobscript = os.path.join(self.temp_wd, "chain_cl_jobscript")
+            write_jobscript(
+                jobname=job_name,
+                logdir=self.uge_log_dir,
+                jobnum=self.chain_jobs,
+                memGB=10,
+                joblist=self.chain_cl_jobs_combined,
+                jobfile=self.chain_cl_jobscript,
+                queue="short"
+                )
+            self.temp_files.append(self.chain_cl_jobs_jobscript)
+            cmd = f'qsub_beta {self.chain_cl_jobs_jobscript}'
             print(f"Calling {cmd}")
             rc = subprocess.call(cmd, shell=True)
         else:  # calling jobs with nextflow
@@ -933,7 +974,7 @@ class Toga:
 
         if rc != 0:  # if process (para or nf) died: terminate execution
             self.die(f"Error! Process {cmd} died")
-        if not self.keep_nf_logs and not self.para:
+        if not self.keep_nf_logs and not (self.para or self.uge):
             # remove nextflow intermediate files
             # if para: this dir doesn't exist
             shutil.rmtree(project_path) if os.path.isdir(project_path) else None
@@ -2044,6 +2085,19 @@ def parse_args():
         help="File containing "
         "nextflow config for BIGMEM CESAR jobs. If not provided, these "
         "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET",
+    )
+    app.add_argument(
+        "--uge",
+        "-u",
+        action="store_true",
+        dest="uge",
+        help="Use UGE array jobs to manage cluster jobs instead of nextflow.",
+    )
+    app.add_argument(
+        "--uge_log_dir",
+        "--ulog",
+        default=None,
+        help="Path to directory for storing UGE cluster logs",
     )
     app.add_argument(
         "--para",

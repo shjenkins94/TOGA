@@ -1,0 +1,14 @@
+name: toga
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+ - twobitreader
+ - networkx
+ - pandas
+ - numpy
+ - py-xgboost
+ - scikit-learn
+ - joblib
+ - h5py<3.2

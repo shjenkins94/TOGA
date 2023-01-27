@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#$ -cwd
+#$ -S /bin/bash
+#$ -V
+#$ -sync y
+#$ -l s_vmem={{memGb}}G
+#$ -l mem_req={{memGb}}G
+#$ -o {{jobname}}_{{ tDb }}{{ qDb }}.o
+#$ -e {{jobname}}_{{ tDb }}{{ qDb }}.e
+#$ -N {{jobname}}_{{ tDb }}{{ qDb }} 
+
+$call
