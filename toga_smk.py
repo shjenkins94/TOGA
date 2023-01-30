@@ -87,7 +87,7 @@ class Toga:
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
         self.para = args.para
-        self.__check_args_correctness(args)
+        self.__check_buckets(snakemake.config["toga"]["cesar_buckets"])
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
@@ -192,14 +192,14 @@ class Toga:
         self.q_2bit = self.__find_two_bit(snakemake.input["qDB"])
 
         self.hq_orth_threshold = 0.95
-        self.cesar_jobs_num = args.cesar_jobs_num
-        self.cesar_buckets = args.cesar_buckets
-        self.cesar_mem_limit = args.cesar_mem_limit
-        self.cesar_chain_limit = args.cesar_chain_limit
-        self.uhq_flank = args.uhq_flank
-        self.mask_stops = args.mask_stops
-        self.no_fpi = args.no_fpi
-        self.o2o_only = args.o2o_only
+        self.cesar_jobs_num = snakemake.config["toga"]["cesar_jobs_num"]
+        self.cesar_buckets = snakemake.config["toga"]["cesar_buckets"]
+        self.cesar_mem_limit = snakemake.config["toga"]["cesar_mem_limit"]
+        self.cesar_chain_limit = snakemake.config["toga"]["cesar_chain_limit"]
+        self.uhq_flank = snakemake.config["toga"]["uhq_flank"]
+        self.mask_stops = snakemake.config["toga"]["mask_stops"]
+        self.no_fpi = snakemake.config["toga"]["no_fpi"]
+        self.o2o_only = snakemake.config["toga"]["o2o_only"]
         self.annotate_paralogs = args.annotate_paralogs
         self.keep_nf_logs = args.do_not_del_nf_logs
         self.exec_cesar_parts_sequentially = args.cesar_exec_seq
@@ -216,13 +216,8 @@ class Toga:
         self.cesar_crashed_jobs_log = os.path.join(
             self.temp_wd, "_cesar_crashed_jobs.txt"
         )
-        self.fragmented_genome = args.fragmented_genome
-        self.orth_score_threshold = args.orth_score_threshold
-        if self.orth_score_threshold < 0.0 or args.orth_score_threshold > 1.0:
-            self.die(
-                "orth_score_threshold parameter must be in range [0..1], got "
-                f"{self.orth_score_threshold}; Abort"
-            )
+        self.fragmented_genome = snakemake.config["toga"]["fragmented_genome"]
+        self.orth_score_threshold = snakemake.config["toga"]["orth_score_threshold"]
 
         self.chain_results_df = os.path.join(self.temp_wd, "chain_results_df.tsv")
         self.nucl_fasta = os.path.join(self.wd, "nucleotide.fasta")
@@ -303,19 +298,19 @@ class Toga:
         print(f"Using automatically generated project name: {project_name}")
         return project_name
 
-    def __check_args_correctness(self, args):
+    def __check_buckets(self, buckets):
         """Check that arguments are correct.
 
         Error exit if any argument is wrong.
         """
-        if args.cesar_buckets:
+        if buckets:
             # if set, need to check that it could be split into numbers
-            comma_sep = args.cesar_buckets.split(",")
+            comma_sep = buckets.split(",")
             all_numeric = [x.isnumeric() for x in comma_sep]
             if any(x is False for x in all_numeric):
                 # there is some non-numeric value
                 err_msg = (
-                    f"Error! --cesar_buckets value {args.cesar_buckets} is incorrect\n"
+                    f"Error! --cesar_buckets value {buckets} is incorrect\n"
                     f"Expected comma-separated list of integers"
                 )
                 self.die(err_msg)
@@ -1386,7 +1381,7 @@ class Toga:
         project_names = []
 
         # get a list of buckets
-        if self.cesar_buckets == "0":
+        if not self.cesar_buckets:
             buckets = [
                 0,
             ]  # a single bucket
@@ -1982,21 +1977,7 @@ def parse_args():
         dest="para_bigmem",
         help="Hillerlab feature, push bigmem jobs with para",
     )
-    app.add_argument(
-        "--orth_score_threshold",
-        "--ost",
-        default=0.5,
-        type=float,
-        help="Score threshold to distinguish orthologs from paralogs, default 0.5",
-    )
     # CESAR part related
-    app.add_argument(
-        "--cesar_jobs_num",
-        "--cjn",
-        type=int,
-        default=500,
-        help="Number of CESAR cluster jobs.",
-    )
     app.add_argument(
         "--cesar_binary", default=None, help="CESAR binary address, cesar as default."
     )
@@ -2016,23 +1997,6 @@ def parse_args():
         "and quit. The parameter is defined for debugging purposes only.",
     )
     app.add_argument(
-        "--mask_stops",
-        "--ms",
-        action="store_true",
-        dest="mask_stops",
-        help="Mask stop codons in target sequences. "
-        "CESAR cannot process them. Using this "
-        "parameter please make sure you know what you are doing.",
-    )
-    app.add_argument(
-        "--cesar_buckets",
-        "--cb",
-        default="0",
-        help="Comma-separated list of integers. Split CESAR jobs in buckets "
-        "depending on their memory requirements. "
-        "See README.md for explanation.",
-    )
-    app.add_argument(
         "--cesar_exec_seq",
         "--ces",
         action="store_true",
@@ -2041,49 +2005,11 @@ def parse_args():
         "not in parallel.",
     )
     app.add_argument(
-        "--cesar_chain_limit",
-        type=int,
-        default=100,
-        help="Skip genes that have more that CESAR_CHAIN_LIMIT orthologous "
-        "chains. Recommended values are a 50-100.",
-    )
-    app.add_argument(
-        "--cesar_mem_limit",
-        type=int,
-        default=16,
-        help="Ignore genes requiring > N gig to run CESAR",
-    )
-    app.add_argument(
         "--stop_at_chain_class",
         "--sac",
         action="store_true",
         dest="stop_at_chain_class",
         help="Stop after merging chain features.",
-    )
-    app.add_argument(
-        "--uhq_flank", default=50, type=int, help="Flank size for UHQ exons"
-    )
-    app.add_argument(
-        "--o2o_only",
-        "--o2o",
-        action="store_true",
-        dest="o2o_only",
-        help="Process only the genes that have a single orthologous chain",
-    )
-    app.add_argument(
-        "--no_fpi",
-        action="store_true",
-        dest="no_fpi",
-        help="Consider some frame-preserving mutations as inactivating. "
-        "See documentation for details.",
-    )
-    app.add_argument(
-        "--fragmented_genome",
-        "-f",
-        dest="fragmented_genome",
-        action="store_true",
-        help="Annotation of a fragmented genome: need to assemble query genes "
-        "from pieces",
     )
     app.add_argument(
         "--ld_model",
