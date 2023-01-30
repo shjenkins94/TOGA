@@ -175,16 +175,10 @@ class Toga:
         self.isoforms_arg = snakemake.input["isoforms"]
         self.isoforms = None  # will be assigned after completeness check
         self.chain_jobs = snakemake.config["toga"]["chain_jobs_num"]
-        self.cesar_binary = (
-            self.DEFAULT_CESAR if not args.cesar_binary else args.cesar_binary
-        )
         self.opt_cesar_binary = os.path.abspath(
             os.path.join(LOCATION, "cesar_input_optimiser.py")
         )
-        self.cesar_is_opt = args.using_optimized_cesar
-        self.output_opt_cesar_regions = args.output_opt_cesar_regions
         self.time_log = args.snakemake.log["time_marks"]
-        self.stop_at_chain_class = args.stop_at_chain_class
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
 
         # define to call CESAR or not to call
@@ -200,11 +194,7 @@ class Toga:
         self.mask_stops = snakemake.config["toga"]["mask_stops"]
         self.no_fpi = snakemake.config["toga"]["no_fpi"]
         self.o2o_only = snakemake.config["toga"]["o2o_only"]
-        self.annotate_paralogs = args.annotate_paralogs
         self.keep_nf_logs = args.do_not_del_nf_logs
-        self.exec_cesar_parts_sequentially = args.cesar_exec_seq
-        self.ld_model_arg = args.ld_model
-        self.mask_all_first_10p = args.mask_all_first_10p
 
         self.cesar_ok_merged = (
             None  # Flag: indicates whether any cesar job BATCHES crashed
@@ -322,7 +312,7 @@ class Toga:
             self.u12,
             self.t_2bit,
             self.q_2bit,
-            self.cesar_binary,
+            self.DEFAULT_CESAR,
             self.ref_bed,
             self.chain_file,
             self.isoforms_arg,
@@ -743,7 +733,6 @@ class Toga:
 
         # 5) create cluster jobs for CESAR2.0
         print("#### STEP 5: Generate CESAR jobs")
-        self.__precompute_data_for_opt_cesar()
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
 
@@ -930,7 +919,6 @@ class Toga:
             self.LOCATION, "long_distance_model", "long_dist_model.dat"
         )
         cl_rej_log = os.path.join(self.rejected_dir, "classify_chains_rejected.txt")
-        ld_arg_ = self.ld_model if self.ld_model_arg else None
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
             self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
         classify_chains(
@@ -941,14 +929,10 @@ class Toga:
             rejected=cl_rej_log,
             raw_out=self.pred_scores,
             annot_threshold=self.orth_score_threshold,
-            ld_model=ld_arg_,
         )
         # extract not classified transcripts
         # first column in the rejected log
         self._transcripts_not_classified = self.__get_fst_col(cl_rej_log)
-
-        if self.stop_at_chain_class:
-            self.die("User requested to halt after chain features extraction", rc=0)
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""
@@ -1099,115 +1083,6 @@ class Toga:
         f.close()
         f.close()
 
-    def __precompute_data_for_opt_cesar(self):
-        """Precompute memory data for optimised CESAR.
-
-        LASTZ optimised CESAR requires different (lesser) amounts of memory.
-        To compute them we need to run another cluster-dependent step.
-        """
-        if not self.cesar_is_opt:
-            return  # in case we use standard CESAR this procedure is not needed
-
-        # need gene: chains
-        # artificial bed file with all possible exons per gene, maybe the longest if intersection... or not?
-        # what if there is a giant exon that does not align but smaller versions do?
-        print("COMPUTING MEMORY REQUIREMENTS FOR OPTIMISED CESAR")
-        mem_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_MEMORY_DIRNAME)
-        self.precomp_reg_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_REGIONS_DIRNAME)
-
-        chain_class_temp_dir = os.path.join(self.wd, TEMP_CHAIN_CLASS)
-        self.precomp_query_loci_dir = os.path.join(
-            self.wd, CESAR_PRECOMPUTED_ORTHO_LOCI_DIRNAME
-        )
-        self.precomp_query_loci_path = os.path.join(
-            self.temp_wd, CESAR_PRECOMPUTED_ORTHO_LOCI_DATA
-        )
-
-        os.mkdir(mem_dir) if not os.path.isdir(mem_dir) else None
-        os.mkdir(chain_class_temp_dir) if not os.path.isdir(
-            chain_class_temp_dir
-        ) else None
-        os.mkdir(self.precomp_reg_dir) if not os.path.isdir(
-            self.precomp_reg_dir
-        ) else None
-        os.mkdir(self.precomp_query_loci_dir) if not os.path.isdir(
-            self.precomp_query_loci_dir
-        ) else None
-
-        self.temp_files.append(mem_dir)
-        self.temp_files.append(chain_class_temp_dir)
-        self.temp_files.append(self.precomp_reg_dir)
-        self.temp_files.append(self.precomp_query_loci_dir)
-
-        # split file containing gene: orthologous/paralogous chains into 100 pieces
-        class_pieces = self.__split_file(
-            self.orthologs, chain_class_temp_dir, NUM_CESAR_MEM_PRECOMP_JUBS
-        )
-        precompute_jobs = []
-        # for nextflow abspath is better:
-        precomp_abspath = os.path.abspath(self.PRECOMPUTE_OPT_CESAR_DATA)
-        # cesar_bin_abspath = os.path.abspath(self.cesar_binary)
-
-        # create joblist: one job per piece
-        for num, class_piece in enumerate(class_pieces, 1):
-            out_m_path = os.path.join(mem_dir, f"part_{num}")
-            out_reg_path = os.path.join(self.precomp_reg_dir, f"part_{num}")
-            out_ol_path = os.path.join(self.precomp_query_loci_dir, f"path_{num}")
-
-            cmd = (
-                f"{precomp_abspath} {class_piece} {self.wd} {self.opt_cesar_binary} "
-                f"{self.t_2bit} {self.q_2bit} {out_m_path} --ro {out_reg_path} --ol {out_ol_path}"
-            )
-            precompute_jobs.append(cmd)
-        # save joblist
-        precomp_mem_joblist = os.path.join(
-            self.wd, "_temp_cesar_precompute_memory_joblist.txt"
-        )
-        with open(precomp_mem_joblist, "w") as f:
-            f.write("\n".join(precompute_jobs))
-            f.write("\n")
-        # now push these jobs to cluster
-        timestamp = str(time.time()).split(".")[0]
-        project_name = f"{self.project_name}_cesar_precompute_{timestamp}"
-        project_path = os.path.join(self.nextflow_dir, project_name)
-        print(f"Precompute cesar regions, project name: {project_name}")
-        print(f"Project path: {project_path}")
-
-        if self.para:  # run jobs with para, skip nextflow
-            cmd = f'para make {project_name} {precomp_mem_joblist} -q="shortmed"'
-            print(f"Calling {cmd}")
-            rc = subprocess.call(cmd, shell=True)
-        else:  # calling jobs with nextflow
-            cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {precomp_mem_joblist}"
-            if not self.local_executor:
-                # not local executor -> provided config files
-                # need abspath for nextflow execution
-                # use the same nf config as for chain features, OK
-                cmd += f" -c {self.nf_chain_extr_config_file}"
-            print(f"Calling {cmd}")
-            os.mkdir(project_path) if not os.path.isdir(project_path) else None
-            rc = subprocess.call(cmd, shell=True, cwd=project_path)
-
-        if rc != 0:  # if process (para or nf) died: terminate execution
-            self.die(f"Error! Process {cmd} died")
-        if not self.keep_nf_logs and not self.para:
-            # remove nextflow intermediate files
-            # if para: this dir doesn't exist
-            shutil.rmtree(project_path) if os.path.isdir(project_path) else None
-        # merge files and quit
-        self.__merge_dir(mem_dir, self.precomp_mem_cesar)
-        # self.__merge_dir(precomp_reg_dir, self.precomp_reg_cesar)
-        self.cesar_mem_was_precomputed = True
-
-        if self.output_opt_cesar_regions:
-            save_to = os.path.join(self.wd, "precomp_regions_for_cesar.bed")
-            exon_regions_df = os.path.join(self.wd, "precomp_regions_exons.tsv")
-            self.__merge_dir(self.precomp_reg_dir, exon_regions_df)
-            self.__merge_dir(self.precomp_query_loci_dir, self.precomp_query_loci_path)
-            self.__fold_exon_data(exon_regions_df, save_to)
-            print(f"Bed file containing precomputed regions is saved to: {save_to}")
-            sys.exit(0)
-
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
         if not self.t_2bit or not self.q_2bit:
@@ -1256,9 +1131,6 @@ class Toga:
         self.temp_files.append(self.gene_loss_data)
         skipped_path = os.path.join(self.rejected_dir, "SPLIT_CESAR.txt")
         self.paralogs_log = os.path.join(self.temp_wd, "paralogs.txt")
-        cesar_binary_to_use = (
-            self.opt_cesar_binary if self.cesar_is_opt else self.cesar_binary
-        )
 
         split_cesar_cmd = (
             f"{self.SPLIT_EXON_REALIGN_JOBS} "
@@ -1275,22 +1147,15 @@ class Toga:
             f"--chains_limit {self.cesar_chain_limit} "
             f"--skipped_genes {skipped_path} "
             f"--rejected_log {self.rejected_dir} "
-            f"--cesar_binary {cesar_binary_to_use} "
+            f"--cesar_binary {self.DEFAULT_CESAR} "
             f"--paralogs_log {self.paralogs_log} "
             f"--uhq_flank {self.uhq_flank} "
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
             f"--unprocessed_log {self.technical_cesar_err}"
         )
 
-        if self.annotate_paralogs:  # very rare occasion
-            split_cesar_cmd += f" --annotate_paralogs"
-        if self.mask_all_first_10p:
-            split_cesar_cmd += f" --mask_all_first_10p"
-        # split_cesar_cmd = split_cesar_cmd + f" --cesar_binary {self.cesar_binary}" \
-        #     if self.cesar_binary else split_cesar_cmd
-        split_cesar_cmd = (
-            split_cesar_cmd + f" --opt_cesar" if self.cesar_is_opt else split_cesar_cmd
-        )
+        # split_cesar_cmd = split_cesar_cmd + f" --cesar_binary {self.DEFAULT_CESAR}" \
+        #     if self.DEFAULT_CESAR else split_cesar_cmd
         split_cesar_cmd = (
             split_cesar_cmd + " --mask_stops" if self.mask_stops else split_cesar_cmd
         )
@@ -1334,10 +1199,6 @@ class Toga:
 
     def __monitor_jobs(self, processes, project_paths, die_if_sc_1=False):
         """Monitor para/ nextflow jobs."""
-        if self.exec_cesar_parts_sequentially is True:
-            # no need to monitor jobs in this way
-            # if they are called sequentially
-            return
         iter_num = 0
         while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
@@ -1453,12 +1314,8 @@ class Toga:
 
             sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
-            # wait for the process if calling processes sequentially
-            # or wait a minute before pushing the next batch in parallel
-            if self.exec_cesar_parts_sequentially is True:
-                p.wait()
-            else:
-                time.sleep(CESAR_PUSH_INTERVAL)
+            # wait a minute before pushing the next batch in parallel
+            time.sleep(CESAR_PUSH_INTERVAL)
             processes.append(p)
 
         # push bigmem jobs
@@ -1488,8 +1345,6 @@ class Toga:
                 project_paths.append(nf_project_path)
                 p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
                 sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
-                if self.exec_cesar_parts_sequentially:
-                    p.wait()
                 processes.append(p)
         elif self.para and self.para_bigmem:
             # if requested: push bigmem jobs with para
@@ -1978,75 +1833,12 @@ def parse_args():
         help="Hillerlab feature, push bigmem jobs with para",
     )
     # CESAR part related
-    app.add_argument(
-        "--cesar_binary", default=None, help="CESAR binary address, cesar as default."
-    )
-    app.add_argument(
-        "--using_optimized_cesar",
-        "--uoc",
-        action="store_true",
-        dest="using_optimized_cesar",
-        help="Instead of CESAR, use lastz-based optimized version",
-    )
-    app.add_argument(
-        "--output_opt_cesar_regions",
-        "--oocr",
-        action="store_true",
-        dest="output_opt_cesar_regions",
-        help="If optimised CESAR is used, save the included regions, "
-        "and quit. The parameter is defined for debugging purposes only.",
-    )
-    app.add_argument(
-        "--cesar_exec_seq",
-        "--ces",
-        action="store_true",
-        dest="cesar_exec_seq",
-        help="Execute different CESAR jobs partitions sequentially, "
-        "not in parallel.",
-    )
-    app.add_argument(
-        "--stop_at_chain_class",
-        "--sac",
-        action="store_true",
-        dest="stop_at_chain_class",
-        help="Stop after merging chain features.",
-    )
-    app.add_argument(
-        "--ld_model",
-        dest="ld_model",
-        action="store_true",
-        help="Apply extra classifier for molecular distances ~1sps.",
-    )
-    app.add_argument(
-        "--annotate_paralogs",
-        "--ap",
-        dest="annotate_paralogs",
-        action="store_true",
-        help="Annotate paralogs instead of orthologs. "
-        "(experimental feature for very specific needs)",
-    )
-    app.add_argument(
-        "--mask_all_first_10p",
-        "--m_f10p",
-        action="store_true",
-        dest="mask_all_first_10p",
-        help="Automatically mask all inactivating mutations in first 10 percent of "
-        "the reading frame, ignoring ATG codons distribution. "
-        "(Default mode in V1.0, not recommended to use in later versions)",
-    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
         sys.exit(0)
     args = app.parse_args()
 
-    # some sanity checks
-    if args.output_opt_cesar_regions and not args.using_optimized_cesar:
-        err_msg = (
-            "Error! Please use --output_opt_cesar_regions parameter "
-            " with --using_optimized_cesar flag only"
-        )
-        sys.exit(err_msg)
     return args
 
 
