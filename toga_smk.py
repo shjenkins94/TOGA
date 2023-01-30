@@ -86,20 +86,16 @@ class Toga:
         self.temp_files = []  # remove at the end, list of temp files
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
-        self.para = args.para
+        self.uge = True
+        self.para = None
         self.__check_buckets(snakemake.config["toga"]["cesar_buckets"])
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
         self.toga_exe_path = os.path.dirname(__file__)
         self.version = self.__get_version()
-        self.para_bigmem = args.para_bigmem
-        self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
-        self.nextflow_config_dir = args.nextflow_config_dir
-        if args.cesar_bigmem_config:
-            self.nextflow_bigmem_config = os.path.abspath(args.cesar_bigmem_config)
-        else:  # if none: we cannot call os.path.abspath method
-            self.nextflow_bigmem_config = None
+        self.nextflow_dir = self.__get_nf_dir()
+        self.nextflow_bigmem_config = None
         self.__check_nf_config()
 
         # to avoid crash on filesystem without locks:
@@ -194,7 +190,6 @@ class Toga:
         self.mask_stops = snakemake.config["toga"]["mask_stops"]
         self.no_fpi = snakemake.config["toga"]["no_fpi"]
         self.o2o_only = snakemake.config["toga"]["o2o_only"]
-        self.keep_nf_logs = args.do_not_del_nf_logs
 
         self.cesar_ok_merged = (
             None  # Flag: indicates whether any cesar job BATCHES crashed
@@ -347,15 +342,11 @@ class Toga:
         self.__check_2bit_file(self.t_2bit, t_chrom_to_size, self.chain_file)
         self.__check_2bit_file(self.q_2bit, q_chrom_to_size, self.chain_file)
 
-    def __get_nf_dir(self, nf_dir_arg):
+    def __get_nf_dir(self):
         """Define nextflow directory."""
-        if nf_dir_arg is None:
-            default_dir = os.path.join(self.LOCATION, NF_DIR_NAME)
-            os.mkdir(default_dir) if not os.path.isdir(default_dir) else None
-            return default_dir
-        else:
-            os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
-            return nf_dir_arg
+        default_dir = os.path.join(self.LOCATION, NF_DIR_NAME)
+        os.mkdir(default_dir) if not os.path.isdir(default_dir) else None
+        return default_dir
 
     def __check_2bit_file(self, two_bit_file, chroms_sizes, chrom_file):
         """Check that 2bit file is readable."""
@@ -596,14 +587,6 @@ class Toga:
             print("Warning! Some of the required packages are not installed.")
             imports_not_found = True
 
-        not_nf = shutil.which(NEXTFLOW) is None
-        if not self.para and not_nf:
-            msg = (
-                "Error! Cannot fild nextflow executable. Please make sure you "
-                "have a nextflow binary in a directory listed in your $PATH"
-            )
-            self.die(msg)
-
         not_all_found = any([c_not_compiled, imports_not_found])
         self.__call_proc(
             self.CONFIGURE, "Could not call configure.sh!"
@@ -630,51 +613,11 @@ class Toga:
 
     def __check_nf_config(self):
         """Check that nextflow configure files are here."""
-        if self.nextflow_bigmem_config and not os.path.isfile(
-            self.nextflow_bigmem_config
-        ):
-            # bigmem config is special for now | sanity check -> defined and no file -> crash
-            self.die(f"Error! File {self.nextflow_bigmem_config} not found!")
-
-        if self.nextflow_config_dir is None:
-            # no nextflow config provided -> using local executor
-            self.cesar_config_template = None
-            self.nf_chain_extr_config_file = None
-            self.local_executor = True
-            return
-        # check conflict: if we set para; nf args should not be set
-        if self.para and self.nextflow_config_dir:
-            self.die(
-                "Conflict: --para and --nf_dir should not be used at the same time"
-            )
-        # check that required config files are here
-        if not os.path.isdir(self.nextflow_config_dir):
-            self.die(
-                f"Error! Nextflow config dir {self.nextflow_config_dir} does not exist!"
-            )
-        err_msg = (
-            "Please note these two files are expected in the nextflow config directory:\n"
-            "1) call_cesar_config_template.nf"
-            "2) extract_chain_features_config.nf"
-        )
-        # check CESAR config template first
-        nf_cesar_config_temp = os.path.join(
-            self.nextflow_config_dir, "call_cesar_config_template.nf"
-        )
-        if not os.path.isfile(nf_cesar_config_temp):
-            self.die(f"Error! File {nf_cesar_config_temp} not found!\n{err_msg}")
-        # we need the content of this file
-        with open(nf_cesar_config_temp, "r") as f:
-            self.cesar_config_template = f.read()
-        # check chain extract features config; we need abspath to this file
-        self.nf_chain_extr_config_file = os.path.abspath(
-            os.path.join(self.nextflow_config_dir, "extract_chain_features_config.nf")
-        )
-        if not os.path.isfile(self.nf_chain_extr_config_file):
-            self.die(
-                f"Error! File {self.nf_chain_extr_config_file} not found!\n{err_msg}"
-            )
-        self.local_executor = False
+        # no nextflow config provided -> using local executor
+        self.cesar_config_template = None
+        self.nf_chain_extr_config_file = None
+        self.local_executor = True
+        return
 
     def __call_proc(self, cmd, extra_msg=None):
         """Call a subprocess and catch errors."""
@@ -874,29 +817,26 @@ class Toga:
         print(f"Extract chain features, project name: {project_name}")
         print(f"Project path: {project_path}")
 
-        if self.para:  # run jobs with para, skip nextflow
-            cmd = f'para make {project_name} {self.chain_cl_jobs_combined} -q="short"'
-            print(f"Calling {cmd}")
-            rc = subprocess.call(cmd, shell=True)
-        else:  # calling jobs with nextflow
-            cmd = (
-                f"nextflow {self.NF_EXECUTE} "
-                f"--joblist {self.chain_cl_jobs_combined}"
-            )
-            if not self.local_executor:
-                # not local executor -> provided config files
-                # need abspath for nextflow execution
-                cmd += f" -c {self.nf_chain_extr_config_file}"
-            print(f"Calling {cmd}")
-            os.mkdir(project_path) if not os.path.isdir(project_path) else None
-            rc = subprocess.call(cmd, shell=True, cwd=project_path)
-
-        if rc != 0:  # if process (para or nf) died: terminate execution
-            self.die(f"Error! Process {cmd} died")
-        if not self.keep_nf_logs and not self.para:
-            # remove nextflow intermediate files
-            # if para: this dir doesn't exist
-            shutil.rmtree(project_path) if os.path.isdir(project_path) else None
+        # TODO: either execute jobscript or output it
+        # if self.para:  # run jobs with para, skip nextflow
+        #     cmd = f'para make {project_name} {self.chain_cl_jobs_combined} -q="short"'
+        #     print(f"Calling {cmd}")
+        #     rc = subprocess.call(cmd, shell=True)
+        # else:  # calling jobs with nextflow
+        #     cmd = (
+        #         f"nextflow {self.NF_EXECUTE} "
+        #         f"--joblist {self.chain_cl_jobs_combined}"
+        #     )
+        #     if not self.local_executor:
+        #         # not local executor -> provided config files
+        #         # need abspath for nextflow execution
+        #         cmd += f" -c {self.nf_chain_extr_config_file}"
+        #     print(f"Calling {cmd}")
+        #     os.mkdir(project_path) if not os.path.isdir(project_path) else None
+        #     rc = subprocess.call(cmd, shell=True, cwd=project_path)
+# 
+        # if rc != 0:  # if process (para or nf) died: terminate execution
+        #     self.die(f"Error! Process {cmd} died")
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -1197,6 +1137,7 @@ class Toga:
         f.close()
         return "".join(lines)
 
+    # TODO: either replace with qsub friendly or delete
     def __monitor_jobs(self, processes, project_paths, die_if_sc_1=False):
         """Monitor para/ nextflow jobs."""
         iter_num = 0
@@ -1216,11 +1157,6 @@ class Toga:
                 )
                 time.sleep(ITER_DURATION)
                 iter_num += 1
-        if not self.keep_nf_logs:
-            # remove nextflow intermediate files
-            print("Removing nextflow temp files")
-            for path in project_paths:
-                shutil.rmtree(path) if os.path.isdir(path) else None
 
         if any(p.returncode != 0 for p in processes) and die_if_sc_1 is True:
             # some para/nextflow job died: critical issue
@@ -1295,22 +1231,23 @@ class Toga:
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
 
-            # create subprocess object
-            if not self.para:  # create nextflow cmd
-                os.mkdir(nf_project_path) if not os.path.isdir(
-                    nf_project_path
-                ) else None
+            # TODO: either execute or get jobscript
+            # # create subprocess object
+            # if not self.para:  # create nextflow cmd
+            #     os.mkdir(nf_project_path) if not os.path.isdir(
+            #         nf_project_path
+            #     ) else None
 
-                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {joblist_abspath}"
-                if config_file_abspath:
-                    cmd += f" -c {config_file_abspath}"
-                p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
-            else:  # create cmd for para
-                memory_mb = b * 1000
-                cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
-                if memory_mb > 0:
-                    cmd += f" --memoryMb={memory_mb}"
-                p = subprocess.Popen(cmd, shell=True)
+            #     cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {joblist_abspath}"
+            #     if config_file_abspath:
+            #         cmd += f" -c {config_file_abspath}"
+            #     p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
+            # else:  # create cmd for para
+            #     memory_mb = b * 1000
+            #     cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
+            #     if memory_mb > 0:
+            #         cmd += f" --memoryMb={memory_mb}"
+            #     p = subprocess.Popen(cmd, shell=True)
 
             sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
@@ -1318,79 +1255,80 @@ class Toga:
             time.sleep(CESAR_PUSH_INTERVAL)
             processes.append(p)
 
-        # push bigmem jobs
-        if self.nextflow_bigmem_config and not self.para:
-            # if provided: push bigmem jobs also
-            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
-            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-            nf_cmd = (
-                f"nextflow {self.NF_EXECUTE} "
-                f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
-            )
-            # if bigmem joblist is empty or not exist: do nothing
-            is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            if is_file:  # if a file: we can open and count lines
-                f = open(self.cesar_bigmem_jobs, "r")
-                big_lines_num = len(f.readlines())
-                f.close()
-            else:  # file doesn't exist, equivalent to an empty file in our case
-                big_lines_num = 0
-            # if it's empty: do nothing
-            if big_lines_num == 0:
-                pass
-            else:
-                os.mkdir(nf_project_path) if not os.path.isdir(
-                    nf_project_path
-                ) else None
-                project_paths.append(nf_project_path)
-                p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-                sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
-                processes.append(p)
-        elif self.para and self.para_bigmem:
-            # if requested: push bigmem jobs with para
-            is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
-            if is_file:  # if a file: we can open and count lines
-                f = open(self.cesar_bigmem_jobs, "r")
-                big_lines_num = len(f.readlines())
-                f.close()
-            else:  # file doesn't exist, equivalent to an empty file in our case
-                big_lines_num = 0
-            # if it's empty: do nothing
-            if big_lines_num == 0:
-                pass
-            else:  # there ARE cesar bigmem jobs: push them
-                memory_mb = 500 * 1000  # TODO: bigmem memory param
-                cmd = (
-                    f"para make {bm_project_name} {self.cesar_bigmem_jobs} "
-                    f'-q="bigmem" --memoryMb={memory_mb}'
-                )
-                p = subprocess.Popen(cmd, shell=True)
-                processes.append(p)
+        # TODO: either execute or get jobscript
+        # # push bigmem jobs
+        # if self.nextflow_bigmem_config and not self.para:
+        #     # if provided: push bigmem jobs also
+        #     nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+        #     nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+        #     nf_cmd = (
+        #         f"nextflow {self.NF_EXECUTE} "
+        #         f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
+        #     )
+        #     # if bigmem joblist is empty or not exist: do nothing
+        #     is_file = os.path.isfile(self.cesar_bigmem_jobs)
+        #     if is_file:  # if a file: we can open and count lines
+        #         f = open(self.cesar_bigmem_jobs, "r")
+        #         big_lines_num = len(f.readlines())
+        #         f.close()
+        #     else:  # file doesn't exist, equivalent to an empty file in our case
+        #         big_lines_num = 0
+        #     # if it's empty: do nothing
+        #     if big_lines_num == 0:
+        #         pass
+        #     else:
+        #         os.mkdir(nf_project_path) if not os.path.isdir(
+        #             nf_project_path
+        #         ) else None
+        #         project_paths.append(nf_project_path)
+        #         p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
+        #         sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
+        #         processes.append(p)
+        # elif self.para and self.para_bigmem:
+        #     # if requested: push bigmem jobs with para
+        #     is_file = os.path.isfile(self.cesar_bigmem_jobs)
+        #     bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+        #     if is_file:  # if a file: we can open and count lines
+        #         f = open(self.cesar_bigmem_jobs, "r")
+        #         big_lines_num = len(f.readlines())
+        #         f.close()
+        #     else:  # file doesn't exist, equivalent to an empty file in our case
+        #         big_lines_num = 0
+        #     # if it's empty: do nothing
+        #     if big_lines_num == 0:
+        #         pass
+        #     else:  # there ARE cesar bigmem jobs: push them
+        #         memory_mb = 500 * 1000  # TODO: bigmem memory param
+        #         cmd = (
+        #             f"para make {bm_project_name} {self.cesar_bigmem_jobs} "
+        #             f'-q="bigmem" --memoryMb={memory_mb}'
+        #         )
+        #         p = subprocess.Popen(cmd, shell=True)
+        #         processes.append(p)
 
-        # monitor jobs
-        self.__monitor_jobs(processes, project_paths)
+        # # monitor jobs
+        # self.__monitor_jobs(processes, project_paths)
 
-        # print CPU runtime (if para), if not -> quit function
-        if not self.para:
-            return
+        # # print CPU runtime (if para), if not -> quit function
+        # if not self.para:
+        #     return
 
-        for p_name in project_names:
-            cmd = f"para time {p_name}"
-            p = subprocess.Popen(
-                cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            stdout_, stderr_ = p.communicate()
-            stdout = stdout_.decode("utf-8")
-            stderr = stderr_.decode("utf-8")
-            print(f"para time output for {p_name}:")
-            print(stdout)
-            print(stderr)
-            cmd_cleanup = f"para clean {p_name}"
-            p = subprocess.Popen(
-                cmd_cleanup, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            _, _ = p.communicate()
+        # for p_name in project_names:
+        #     cmd = f"para time {p_name}"
+        #     p = subprocess.Popen(
+        #         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        #     )
+        #     stdout_, stderr_ = p.communicate()
+        #     stdout = stdout_.decode("utf-8")
+        #     stderr = stderr_.decode("utf-8")
+        #     print(f"para time output for {p_name}:")
+        #     print(stdout)
+        #     print(stderr)
+        #     cmd_cleanup = f"para clean {p_name}"
+        #     p = subprocess.Popen(
+        #         cmd_cleanup, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        #     )
+        #     _, _ = p.communicate()
 
     @staticmethod
     def __get_bucket_val(mem_val, buckets):
@@ -1516,49 +1454,50 @@ class Toga:
             )
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
-            if self.para:
-                # push this using para
-                memory_mb = bucket * 1000
-                cmd = f'para make {nf_project_name} {bucket_batch_file} -q="shortmed"'
-                if memory_mb > 0:
-                    cmd += f" --memoryMb={memory_mb}"
-                p = subprocess.Popen(cmd, shell=True)
-            else:
-                # push jobs using nextflow
-                os.mkdir(nf_project_path) if not os.path.isdir(
-                    nf_project_path
-                ) else None
-                config_file_path = os.path.join(
-                    self.wd, f"cesar_config_{bucket}_queue.nf"
-                )
-                config_file_abspath = os.path.abspath(config_file_path)
-                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {bucket_batch_file}"
-                if os.path.isfile(config_file_abspath):
-                    cmd += f" -c {config_file_abspath}"
-                p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
-            p_objects.append(p)
-            time.sleep(CESAR_PUSH_INTERVAL)
-        self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
-        # TODO: maybe some extra sanity check
 
-        # need to check whether anything crashed again
-        crashed_twice = []
-        for elem in err_log_files:
-            f = open(elem, "r")
-            lines = [x for x in f.readlines() if len(x) > 1]
-            f.close()
-            crashed_twice.extend(lines)
-        shutil.rmtree(self.rejected_dir_rerun)
-        if len(crashed_twice) == 0:
-            print("All CESAR jobs re-ran succesfully!")
-            return
-        # OK, some jobs crashed twice
-        crashed_log = os.path.join(self.wd, "cesar_jobs_crashed.txt")
-        f = open(crashed_log, "w")
-        f.write("".join(crashed_twice))
-        f.close()
-        err_msg = f"Some CESAR jobs crashed twice, please check {crashed_log}; Abort"
-        self.die(err_msg, 1)
+        # TODO: either execute or get jobscript
+        #     if self.para:
+        #         # push this using para
+        #         memory_mb = bucket * 1000
+        #         cmd = f'para make {nf_project_name} {bucket_batch_file} -q="shortmed"'
+        #         if memory_mb > 0:
+        #             cmd += f" --memoryMb={memory_mb}"
+        #         p = subprocess.Popen(cmd, shell=True)
+        #     else:
+        #         # push jobs using nextflow
+        #         os.mkdir(nf_project_path) if not os.path.isdir(
+        #             nf_project_path
+        #         ) else None
+        #         config_file_path = os.path.join(
+        #             self.wd, f"cesar_config_{bucket}_queue.nf"
+        #         )
+        #         config_file_abspath = os.path.abspath(config_file_path)
+        #         cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {bucket_batch_file}"
+        #         if os.path.isfile(config_file_abspath):
+        #             cmd += f" -c {config_file_abspath}"
+        #         p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
+        #     p_objects.append(p)
+        #     time.sleep(CESAR_PUSH_INTERVAL)
+        # self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
+# 
+        # # need to check whether anything crashed again
+        # crashed_twice = []
+        # for elem in err_log_files:
+        #     f = open(elem, "r")
+        #     lines = [x for x in f.readlines() if len(x) > 1]
+        #     f.close()
+        #     crashed_twice.extend(lines)
+        # shutil.rmtree(self.rejected_dir_rerun)
+        # if len(crashed_twice) == 0:
+        #     print("All CESAR jobs re-ran succesfully!")
+        #     return
+        # # OK, some jobs crashed twice
+        # crashed_log = os.path.join(self.wd, "cesar_jobs_crashed.txt")
+        # f = open(crashed_log, "w")
+        # f.write("".join(crashed_twice))
+        # f.close()
+        # err_msg = f"Some CESAR jobs crashed twice, please check {crashed_log}; Abort"
+        # self.die(err_msg, 1)
 
     def __append_technicall_err_to_predef_class(self, transcripts_path, out_path):
         """Append file with predefined clasifications."""
@@ -1786,65 +1725,8 @@ class Toga:
             self.chain_class_results
         ) else None
 
-
-def parse_args():
-    """Read args, check."""
-    app = argparse.ArgumentParser()
-    # global ops
-    app.add_argument(
-        "--nextflow_dir",
-        "--nd",
-        default=None,
-        help="Nextflow working directory: from this directory nextflow is "
-        "executed, also there all nextflow log files are kept",
-    )
-    app.add_argument(
-        "--nextflow_config_dir",
-        "--nc",
-        default=None,
-        help="Directory containing nextflow configuration files "
-        "for cluster, pls see nextflow_config_files/readme.txt "
-        "for details.",
-    )
-    app.add_argument(
-        "--do_not_del_nf_logs", "--nfnd", action="store_true", dest="do_not_del_nf_logs"
-    )
-    app.add_argument(
-        "--cesar_bigmem_config",
-        "--nb",
-        default=None,
-        help="File containing "
-        "nextflow config for BIGMEM CESAR jobs. If not provided, these "
-        "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET",
-    )
-    app.add_argument(
-        "--para",
-        "-p",
-        action="store_true",
-        dest="para",
-        help="Hillerlab feature, use para instead of nextflow to "
-        "manage cluster jobs.",
-    )
-    app.add_argument(
-        "--para_bigmem",
-        "--pb",
-        action="store_true",
-        dest="para_bigmem",
-        help="Hillerlab feature, push bigmem jobs with para",
-    )
-    # CESAR part related
-    # print help if there are no args
-    if len(sys.argv) < 2:
-        app.print_help()
-        sys.exit(0)
-    args = app.parse_args()
-
-    return args
-
-
 def main():
     """Entry point."""
-    args = parse_args()
     toga_manager = Toga(args)
     toga_manager.run()
 
