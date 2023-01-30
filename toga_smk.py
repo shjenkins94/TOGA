@@ -4,7 +4,6 @@
 Perform all operations from the beginning to the end.
 If you need to call TOGA: most likely this is what you need.
 """
-import argparse
 import sys
 import os
 import subprocess
@@ -13,15 +12,12 @@ from datetime import datetime as dt
 import json
 import shutil
 import functools
-from math import ceil
 from collections import defaultdict
 from twobitreader import TwoBitFile
-from modules.common import parts
 from modules.filter_bed import prepare_bed_file
 from modules.bed_hdf5_index import bed_hdf5_index
 from modules.chain_bst_index import chain_bst_index
 from modules.merge_chains_output import merge_chains_output
-from modules.make_pr_pseudogenes_anno import create_ppgene_track
 from modules.merge_cesar_output import merge_cesar_output
 from modules.gene_losses_summary import gene_losses_summary
 from modules.orthology_type_map import orthology_type_map
@@ -43,9 +39,7 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 U12_FILE_COLS = 3
 U12_AD_FIELD = {"A", "D"}
-ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
-NEXTFLOW = "nextflow"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
 ITER_DURATION = 60  # CESAR jobs check interval
 MEMLIM_ARG = "--memlim"
@@ -55,18 +49,7 @@ CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
 CESAR_RUNNER_TMP = "{0} {1} {2} --check_loss {3} --rejected_log {4}"
-CESAR_PRECOMPUTED_REGIONS_DIRNAME = "cesar_precomputed_regions"
-CESAR_PRECOMPUTED_MEMORY_DIRNAME = "cesar_precomputed_memory"
-CESAR_PRECOMPUTED_ORTHO_LOCI_DIRNAME = "cesar_precomputed_orthologous_loci"
 
-CESAR_PRECOMPUTED_MEMORY_DATA = "cesar_precomputed_memory.tsv"
-CESAR_PRECOMPUTED_REGIONS_DATA = "cesar_precomputed_regions.tsv"
-CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
-
-NUM_CESAR_MEM_PRECOMP_JUBS = 500
-
-
-TEMP_CHAIN_CLASS = "temp_chain_trans_class"
 MODULES_DIR = "modules"
 RUNNING = "RUNNING"
 CRASHED = "CRASHED"
@@ -79,14 +62,13 @@ print = functools.partial(print, flush=True)
 class Toga:
     """TOGA manager class."""
 
-    def __init__(self, args):
+    def __init__(self):
         """Initiate toga class."""
         self.t0 = dt.now()
         # check if all files TOGA needs are here
         self.temp_files = []  # remove at the end, list of temp files
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
-        self.uge = True
         self.para = None
         self.__check_buckets(snakemake.config["toga"]["cesar_buckets"])
         self.__modules_addr()
@@ -117,6 +99,9 @@ class Toga:
         os.mkdir(self.rejected_dir) if not os.path.isdir(self.rejected_dir) else None
 
         # filter chain in this folder
+        self.chain_input = snakemake.input["chain"]
+        self.min_score = snakemake.config["toga"]["min_score"]
+
         g_ali_basename = "genome_alignment"
         self.chain_file = os.path.join(self.temp_wd, f"{g_ali_basename}.chain")
         # there is an assumption that chain file has .chain extension
@@ -131,20 +116,20 @@ class Toga:
             self.temp_wd, f"{g_ali_basename}.chain_ID_position"
         )
 
-        chain_basename = os.path.basename(snakemake.input["chain"])
+        chain_basename = os.path.basename(self.chain_input)
         # make the command, prepare the chain file
         if chain_basename.endswith(".gz"):  # version for gz
             chain_filter_cmd = (
-                f"gzip -dc {snakemake.input["chain"]} | "
+                f"gzip -dc {self.chain_input} | "
                 f"{self.CHAIN_SCORE_FILTER} stdin "
-                f"{snakemake.config["toga"]["min_score"]} > {self.chain_file}"
+                f"{self.min_score} > {self.chain_file}"
             )
         elif snakemake.config["toga"]["no_chain_filter"]:  # it is .chain and score filter is not required
-            chain_filter_cmd = f"rsync -a {snakemake.input["chain"]} {self.chain_file}"
+            chain_filter_cmd = f"rsync -a {self.chain_input} {self.chain_file}"
         else:  # it is .chain | score filter required
             chain_filter_cmd = (
-                f"{self.CHAIN_SCORE_FILTER} {snakemake.input["chain"]} "
-                f"{snakemake.config["toga"]["min_score"]} > {self.chain_file}"
+                f"{self.CHAIN_SCORE_FILTER} {self.chain_input} "
+                f"{self.min_score} > {self.chain_file}"
             )
 
         # filter chains with score < threshold
@@ -174,7 +159,7 @@ class Toga:
         self.opt_cesar_binary = os.path.abspath(
             os.path.join(LOCATION, "cesar_input_optimiser.py")
         )
-        self.time_log = args.snakemake.log["time_marks"]
+        self.time_log = snakemake.log["time_marks"]
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
 
         # define to call CESAR or not to call
@@ -225,11 +210,6 @@ class Toga:
         self.bed_fragm_exons_data = os.path.join(
             self.temp_wd, "bed_fragments_to_exons.tsv"
         )
-        self.precomp_mem_cesar = os.path.join(
-            self.temp_wd, CESAR_PRECOMPUTED_MEMORY_DATA
-        )
-        self.precomp_reg_dir = None
-        self.cesar_mem_was_precomputed = False
         self.u12_arg = snakemake.input["u12"]
         self.u12 = None  # assign after U12 file check
 
@@ -256,8 +236,6 @@ class Toga:
         with open(self.toga_params_file, "w") as f:
             # default=string is a workaround to serialize datetime object
             json.dump(self.__dict__, f, default=str)
-        with open(self.toga_args_file, "w") as f:
-            json.dump(vars(args), f, default=str)
         with open(self.version_file, "w") as f:
             f.write(self.version)
         print("#### TOGA initiated successfully! ####")
@@ -274,14 +252,6 @@ class Toga:
         elif os.path.isfile(dest):
             return
         os.symlink(src, dest)
-
-    @staticmethod
-    def __gen_project_name():
-        """Generate project name automatically."""
-        today_and_now = dt.now().strftime("%Y.%m.%d_at_%H:%M:%S")
-        project_name = f"TOGA_project_on_{today_and_now}"
-        print(f"Using automatically generated project name: {project_name}")
-        return project_name
 
     def __check_buckets(self, buckets):
         """Check that arguments are correct.
@@ -834,7 +804,7 @@ class Toga:
         #     print(f"Calling {cmd}")
         #     os.mkdir(project_path) if not os.path.isdir(project_path) else None
         #     rc = subprocess.call(cmd, shell=True, cwd=project_path)
-# 
+        # 
         # if rc != 0:  # if process (para or nf) died: terminate execution
         #     self.die(f"Error! Process {cmd} died")
 
@@ -873,156 +843,7 @@ class Toga:
         # extract not classified transcripts
         # first column in the rejected log
         self._transcripts_not_classified = self.__get_fst_col(cl_rej_log)
-
-    def __get_proc_pseudogenes_track(self):
-        """Create annotation of processed genes in query."""
-        print("Creating processed pseudogenes track.")
-        proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
-        create_ppgene_track(
-            self.pred_scores, self.chain_file, self.index_bed_file, proc_pgenes_track
-        )
-
-    @staticmethod
-    def __split_file(src, dst_dir, pieces_num):
-        """Split file src into pieces_num pieces and save them to dst_dir."""
-        f = open(src, "r")
-        # skip header
-        lines = list(f.readlines())[1:]
-        f.close()
-        lines_num = len(lines)
-        piece_size = ceil(lines_num / pieces_num)
-        paths_to_pieces = []
-        for num, piece in enumerate(parts(lines, piece_size), 1):
-            f_name = f"part_{num}"
-            f_path = os.path.join(dst_dir, f_name)
-            paths_to_pieces.append(f_path)
-            f = open(f_path, "w")
-            f.write("".join(piece))
-            f.close()
-        return paths_to_pieces
-    
-    def __get_transcript_to_strand(self):
-        """Get """
-        ret = {}
-        f = open(self.ref_bed, 'r')
-        for line in f:
-            ld = line.rstrip().split("\t")
-            trans = ld[3]
-            direction = ld[5]
-            ret[trans] = direction
-        f.close()
-        return ret
-
-    def __get_chain_to_qstrand(self):
-        ret = {}
-        f = open(self.chain_file, "r")
-        for line in f:
-            if not line.startswith("chain"):
-                continue
-            fields = line.rstrip().split()
-            chain_id = int(fields[-1])
-            q_strand = fields[9]
-            ret[chain_id] = q_strand
-        f.close()
-        return ret
-
-    def __fold_exon_data(self, exons_data, out_bed):
-        """Convert exon data into bed12."""
-        projection_to_exons = defaultdict(list)
-        # 1: make projection:
-        f = open(exons_data, "r")
-        for line in f:
-            ld = line.rstrip().split("\t")
-            transcript, _chain, _start, _end = ld
-            chain = int(_chain)
-            start = int(_start)
-            end = int(_end)
-            region = (start, end)
-            projection_to_exons[(transcript, chain)].append(region)
-        # 2 - get search loci for each projection
-        projection_to_search_loc = {}
-
-        # CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
-        f = open(self.precomp_query_loci_path, "r")
-        for elem in f:
-            elem_data = elem.split("\t")
-            transcript = elem_data[1]
-            chain = int(elem_data[2])
-            projection = f"{transcript}.{chain}"
-            search_locus = elem_data[3]
-            chrom, s_e = search_locus.split(":")
-            s_e_split = s_e.split("-")
-            start, end = int(s_e_split[0]), int(s_e_split[1])
-            projection_to_search_loc[(transcript, chain)] = (chrom, start, end)
-        f.close()
-        trans_to_strand = self.__get_transcript_to_strand()
-        chain_to_qstrand = self.__get_chain_to_qstrand()
-        # 3 - save bed 12
-        f = open(out_bed, "w")
-        # print(projection_to_search_loc)
-        for (transcript, chain), exons in projection_to_exons.items():
-            # print(transcript, chain)
-            projection = f"{transcript}.{chain}"
-            trans_strand = trans_to_strand[transcript]
-            chain_strand = chain_to_qstrand[chain]
-            to_invert = trans_strand != chain_strand
-
-            exons_sort = sorted(exons, key=lambda x: x[0])
-            if to_invert:
-                exons_sort = exons_sort[::-1]
-
-            # crash here
-            search_locus = projection_to_search_loc[(transcript, chain)]
-            chrom = search_locus[0]
-            search_start = search_locus[1]
-            search_end = search_locus[2]
-
-            if to_invert:
-                bed_start = search_end - exons_sort[0][1]
-                bed_end = search_end - exons_sort[-1][0]
-            else:
-                bed_start = exons_sort[0][0] + search_start
-                bed_end = exons_sort[-1][1] + search_start
-
-            block_sizes, block_starts = [], []
-            for exon in exons_sort:
-                abs_start_in_s, abs_end_in_s = exon
-                # print(exon)
-
-                if to_invert:
-                    abs_start = search_end - abs_end_in_s
-                    abs_end = search_end - abs_start_in_s
-                else:
-                    abs_start = abs_start_in_s + search_start
-                    abs_end = abs_end_in_s + search_start
-
-                # print(abs_start, abs_end)
-
-                rel_start = abs_start - bed_start
-                block_size = abs_end - abs_start
-                block_sizes.append(block_size)
-                block_starts.append(rel_start)
-            block_sizes_field = ",".join(map(str, block_sizes))
-            block_starts_field = ",".join(map(str, block_starts))
-            all_fields = (
-                chrom,
-                bed_start,
-                bed_end,
-                projection,
-                0,
-                0,
-                bed_start,
-                bed_end,
-                "0,0,0",
-                len(exons),
-                block_sizes_field,
-                block_starts_field,
-            )
-            f.write("\t".join(map(str, all_fields)))
-            f.write("\n")
-        f.close()
-        f.close()
-
+  
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
         if not self.t_2bit or not self.q_2bit:
@@ -1112,9 +933,6 @@ class Toga:
             split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
         if fragm_dict_file:
             split_cesar_cmd += f" --fragments_data {fragm_dict_file}"
-        if self.cesar_mem_was_precomputed:
-            split_cesar_cmd += f" --precomp_memory_data {self.precomp_mem_cesar}"
-            split_cesar_cmd += f" --precomp_regions_data_dir {self.precomp_reg_dir}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
 
     def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
@@ -1249,11 +1067,11 @@ class Toga:
             #         cmd += f" --memoryMb={memory_mb}"
             #     p = subprocess.Popen(cmd, shell=True)
 
-            sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
+            # sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
-            # wait a minute before pushing the next batch in parallel
-            time.sleep(CESAR_PUSH_INTERVAL)
-            processes.append(p)
+            # # wait a minute before pushing the next batch in parallel
+            # time.sleep(CESAR_PUSH_INTERVAL)
+            # processes.append(p)
 
         # TODO: either execute or get jobscript
         # # push bigmem jobs
@@ -1727,7 +1545,7 @@ class Toga:
 
 def main():
     """Entry point."""
-    toga_manager = Toga(args)
+    toga_manager = Toga()
     toga_manager.run()
 
 
