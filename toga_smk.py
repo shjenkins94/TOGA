@@ -141,14 +141,14 @@ class Toga:
             chain_filter_cmd = (
                 f"gzip -dc {snakemake.input["chain"]} | "
                 f"{self.CHAIN_SCORE_FILTER} stdin "
-                f"{args.min_score} > {self.chain_file}"
+                f"{snakemake.config["toga"]["min_score"]} > {self.chain_file}"
             )
-        elif args.no_chain_filter:  # it is .chain and score filter is not required
+        elif snakemake.config["toga"]["no_chain_filter"]:  # it is .chain and score filter is not required
             chain_filter_cmd = f"rsync -a {snakemake.input["chain"]} {self.chain_file}"
         else:  # it is .chain | score filter required
             chain_filter_cmd = (
                 f"{self.CHAIN_SCORE_FILTER} {snakemake.input["chain"]} "
-                f"{args.min_score} > {self.chain_file}"
+                f"{snakemake.config["toga"]["min_score"]} > {self.chain_file}"
             )
 
         # filter chains with score < threshold
@@ -168,13 +168,13 @@ class Toga:
             snakemake.input["bed"],
             self.ref_bed,
             save_rejected=bed_filt_rejected,
-            only_chrom=args.limit_to_ref_chrom,
+            only_chrom=snakemake.config["toga"]["limit_to_ref_chrom"],
         )
 
         # mics things
         self.isoforms_arg = snakemake.input["isoforms"]
         self.isoforms = None  # will be assigned after completeness check
-        self.chain_jobs = args.chain_jobs_num
+        self.chain_jobs = snakemake.config["toga"]["chain_jobs_num"]
         self.cesar_binary = (
             self.DEFAULT_CESAR if not args.cesar_binary else args.cesar_binary
         )
@@ -187,7 +187,6 @@ class Toga:
         self.stop_at_chain_class = args.stop_at_chain_class
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
 
-        self.keep_temp = True if args.keep_temp else False
         # define to call CESAR or not to call
         self.t_2bit = self.__find_two_bit(snakemake.input["tDB"])
         self.q_2bit = self.__find_two_bit(snakemake.input["qDB"])
@@ -527,9 +526,6 @@ class Toga:
         """Show msg in stderr, exit with the rc given."""
         print(msg)
         print(f"Program finished with exit code {rc}\n")
-        # for t_file in self.temp_files:  # remove temp files if required
-        #     os.remove(t_file) if os.path.isfile(t_file) and not self.keep_temp else None
-        #     shutil.rmtree(t_file) if os.path.isdir(t_file) and not self.keep_temp else None
         self.__mark_crashed()
         sys.exit(rc)
 
@@ -1946,26 +1942,6 @@ def parse_args():
     app = argparse.ArgumentParser()
     # global ops
     app.add_argument(
-        "--min_score",
-        "--msc",
-        type=int,
-        default=15000,
-        help="Chain score threshold. Exclude chains that have a lower score "
-        "from the analysis. Default value is 15000.",
-    )
-    app.add_argument(
-        "--keep_temp",
-        "--kt",
-        action="store_true",
-        dest="keep_temp",
-        help="Do not remove temp files.",
-    )
-    app.add_argument(
-        "--limit_to_ref_chrom",
-        default=None,
-        help="Find orthologs " "for a single reference chromosome only",
-    )
-    app.add_argument(
         "--nextflow_dir",
         "--nd",
         default=None,
@@ -2005,23 +1981,6 @@ def parse_args():
         action="store_true",
         dest="para_bigmem",
         help="Hillerlab feature, push bigmem jobs with para",
-    )
-    # chain features related
-    app.add_argument(
-        "--chain_jobs_num",
-        "--chn",
-        type=int,
-        default=100,
-        help="Number of cluster jobs for extracting chain features. "
-        "Recommended from 150 to 200 jobs.",
-    )
-    app.add_argument(
-        "--no_chain_filter",
-        "--ncf",
-        action="store_true",
-        dest="no_chain_filter",
-        help="A flag. Do not filter the chain file (make sure you specified "
-        "a .chain but not .gz file in this case)",
     )
     app.add_argument(
         "--orth_score_threshold",
