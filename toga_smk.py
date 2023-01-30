@@ -172,7 +172,7 @@ class Toga:
         )
 
         # mics things
-        self.isoforms_arg = args.isoforms if args.isoforms else None
+        self.isoforms_arg = snakemake.input["isoforms"]
         self.isoforms = None  # will be assigned after completeness check
         self.chain_jobs = args.chain_jobs_num
         self.cesar_binary = (
@@ -251,7 +251,7 @@ class Toga:
         )
         self.precomp_reg_dir = None
         self.cesar_mem_was_precomputed = False
-        self.u12_arg = args.u12
+        self.u12_arg = snakemake.input["u12"]
         self.u12 = None  # assign after U12 file check
 
         # genes to be classified as missing
@@ -1954,9 +1954,6 @@ def parse_args():
         "from the analysis. Default value is 15000.",
     )
     app.add_argument(
-        "--isoforms", "-i", type=str, default="", help="Path to isoforms data file"
-    )
-    app.add_argument(
         "--keep_temp",
         "--kt",
         action="store_true",
@@ -2097,7 +2094,6 @@ def parse_args():
         default=16,
         help="Ignore genes requiring > N gig to run CESAR",
     )
-    app.add_argument("--u12", default=None, help="U12 introns data")
     app.add_argument(
         "--stop_at_chain_class",
         "--sac",
