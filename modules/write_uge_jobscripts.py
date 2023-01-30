@@ -31,7 +31,7 @@ def parse_args():
     return args
 
 def write_jobscript(jobname, logdir, jobnum, memGB, joblist, jobfile, queue):
-    templatefile = os.path.join(os.path.dirname(__file__), 'array_jobscript.jinja2')
+    templatefile = os.path.join(os.path.dirname(__file__), '../uge_templates/array_jobscript.jinja2')
     with open(templatefile) as tf:
         content = Template(tf.read()).render(
             jobname=jobname,
