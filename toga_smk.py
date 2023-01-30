@@ -107,8 +107,6 @@ class Toga:
         # temporary fix for DSL error in recent NF versions
         os.environ["NXF_DEFAULT_DSL"] = "1"
 
-        chain_basename = os.path.basename(args.chain_input)
-
         # define project name
         if args.project_name:
             self.project_name = args.project_name
@@ -149,21 +147,19 @@ class Toga:
             self.temp_wd, f"{g_ali_basename}.chain_ID_position"
         )
 
+        chain_basename = os.path.basename(snakemake.input["chain"])
         # make the command, prepare the chain file
-        if not os.path.isfile(args.chain_input):
-            chain_filter_cmd = None
-            self.die(f"Error! File {args.chain_input} doesn't exist!")
-        elif chain_basename.endswith(".gz"):  # version for gz
+        if chain_basename.endswith(".gz"):  # version for gz
             chain_filter_cmd = (
-                f"gzip -dc {args.chain_input} | "
+                f"gzip -dc {snakemake.input["chain"]} | "
                 f"{self.CHAIN_SCORE_FILTER} stdin "
                 f"{args.min_score} > {self.chain_file}"
             )
         elif args.no_chain_filter:  # it is .chain and score filter is not required
-            chain_filter_cmd = f"rsync -a {args.chain_input} {self.chain_file}"
+            chain_filter_cmd = f"rsync -a {snakemake.input["chain"]} {self.chain_file}"
         else:  # it is .chain | score filter required
             chain_filter_cmd = (
-                f"{self.CHAIN_SCORE_FILTER} {args.chain_input} "
+                f"{self.CHAIN_SCORE_FILTER} {snakemake.input["chain"]} "
                 f"{args.min_score} > {self.chain_file}"
             )
 
@@ -181,7 +177,7 @@ class Toga:
         bed_filt_rejected = os.path.join(self.rejected_dir, bed_filt_rejected_file)
         # keeping UTRs!
         prepare_bed_file(
-            args.bed_input,
+            snakemake.input["bed"],
             self.ref_bed,
             save_rejected=bed_filt_rejected,
             only_chrom=args.limit_to_ref_chrom,
@@ -205,8 +201,8 @@ class Toga:
 
         self.keep_temp = True if args.keep_temp else False
         # define to call CESAR or not to call
-        self.t_2bit = self.__find_two_bit(args.tDB)
-        self.q_2bit = self.__find_two_bit(args.qDB)
+        self.t_2bit = self.__find_two_bit(snakemake.input["tDB"])
+        self.q_2bit = self.__find_two_bit(snakemake.input["qDB"])
 
         self.hq_orth_threshold = 0.95
         self.cesar_jobs_num = args.cesar_jobs_num
@@ -336,10 +332,6 @@ class Toga:
                     f"Expected comma-separated list of integers"
                 )
                 self.die(err_msg)
-        if not os.path.isfile(args.chain_input):
-            self.die(f"Error! Chain file {args.chain_input} does not exist!")
-        if not os.path.isfile(args.bed_input):
-            self.die(f"Error! Bed file {args.bed_input} does not exist!")
         return
 
     def __check_param_files(self):
@@ -1964,19 +1956,6 @@ class Toga:
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
-    app.add_argument(
-        "chain_input",
-        type=str,
-        help="Chain file. Extensions like "
-        "FILE.chain or FILE.chain.gz are applicable.",
-    )
-    app.add_argument(
-        "bed_input", type=str, help="Bed file with annotations for the target genome."
-    )
-    app.add_argument(
-        "tDB", default=None, help="Reference genome sequence in 2bit format."
-    )
-    app.add_argument("qDB", default=None, help="Query genome sequence in 2bit format.")
     # global ops
     app.add_argument(
         "--project_dir",
