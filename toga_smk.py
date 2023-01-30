@@ -195,7 +195,7 @@ class Toga:
         )
         self.cesar_is_opt = args.using_optimized_cesar
         self.output_opt_cesar_regions = args.output_opt_cesar_regions
-        self.time_log = args.time_marks
+        self.time_log = args.snakemake.log["time_marks"]
         self.stop_at_chain_class = args.stop_at_chain_class
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
 
@@ -2126,12 +2126,6 @@ def parse_args():
         type=int,
         default=16,
         help="Ignore genes requiring > N gig to run CESAR",
-    )
-    app.add_argument(
-        "--time_marks",
-        "-t",
-        default=None,
-        help="File to save timings of different steps.",
     )
     app.add_argument("--u12", default=None, help="U12 introns data")
     app.add_argument(
