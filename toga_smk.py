@@ -108,22 +108,10 @@ class Toga:
         os.environ["NXF_DEFAULT_DSL"] = "1"
 
         # define project name
-        if args.project_name:
-            self.project_name = args.project_name
-        elif args.project_dir:
-            _dirname = os.path.dirname(args.project_dir)
-            self.project_name = os.path.basename(_dirname)
-        else:
-            self.project_name = self.__gen_project_name()
+        self.project_name = snakemake.params["project_name"]
         # create project dir
-        self.wd = (
-            os.path.abspath(args.project_dir)
-            if args.project_dir
-            else os.path.join(os.getcwd(), self.project_name)
-        )
+        self.wd = os.path.abspath(snakemake.params["project_dir"])
         self.temp_wd = os.path.join(self.wd, TEMP)
-        # for safety; need this to make paths later
-        self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
         os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
         print(f"Output directory: {self.wd}")
@@ -1957,24 +1945,6 @@ def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
     # global ops
-    app.add_argument(
-        "--project_dir",
-        "--pd",
-        default=None,
-        help="Project directory. TOGA will save all intermediate and output files "
-        "exactly in this directory. If not specified, use CURRENT_DIR/PROJECT_NAME "
-        "as default (see below).",
-    )
-    app.add_argument(
-        "--project_name",
-        "--pn",
-        default=None,
-        help="If you don't like to provide a full path to the project directory with "
-        "--project_dir you can use this parameter. In this case TOGA will "
-        "create project directory in the current directory as "
-        '"CURRENT_DIR/PROJECT_NAME". If not provided, TOGA will try to extract '
-        "the project name from chain filename, which is not recommended.",
-    )
     app.add_argument(
         "--min_score",
         "--msc",
