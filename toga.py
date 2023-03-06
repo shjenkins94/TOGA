@@ -30,6 +30,7 @@ from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import _collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import _add_transcripts_to_missing
+from modules.write_uge_jobscripts import write_jobscript, run_jobscript
 
 # from modules.common import eprint
 from modules.stitch_fragments import stitch_scaffolds
@@ -45,6 +46,7 @@ U12_FILE_COLS = 3
 U12_AD_FIELD = {"A", "D"}
 ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
+UGE_LOG_DIR_NAME = "cluster_logs"
 NEXTFLOW = "nextflow"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
 ITER_DURATION = 60  # CESAR jobs check interval
@@ -86,6 +88,7 @@ class Toga:
         self.temp_files = []  # remove at the end, list of temp files
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
+        self.uge = args.uge
         self.para = args.para
         self.__check_args_correctness(args)
         self.__modules_addr()
@@ -124,10 +127,13 @@ class Toga:
             else os.path.join(os.getcwd(), self.project_name)
         )
         self.temp_wd = os.path.join(self.wd, TEMP)
+        self.uge_log_dir = self.__get_uge_log_dir(args.uge_log_dir)
         # for safety; need this to make paths later
         self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
         os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
+        if self.uge:
+            os.mkdir(self.uge_log_dir) if not os.path.isdir(self.uge_log_dir) else None
         print(f"Output directory: {self.wd}")
 
         # dir to collect log files with rejected reference genes:
@@ -392,6 +398,13 @@ class Toga:
         else:
             os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
             return nf_dir_arg
+    
+    def __get_uge_log_dir(self, uge_log_arg):
+        """Define UGE log directory"""
+        if uge_log_arg is None:
+            return os.path.join(self.temp_wd, UGE_LOG_DIR_NAME)
+        else:
+            return uge_log_arg
 
     def __check_2bit_file(self, two_bit_file, chroms_sizes, chrom_file):
         """Check that 2bit file is readable."""
@@ -636,7 +649,7 @@ class Toga:
             imports_not_found = True
 
         not_nf = shutil.which(NEXTFLOW) is None
-        if not self.para and not_nf:
+        if not (self.para or self.uge) and not_nf:
             msg = (
                 "Error! Cannot fild nextflow executable. Please make sure you "
                 "have a nextflow binary in a directory listed in your $PATH"
@@ -686,6 +699,14 @@ class Toga:
             self.die(
                 "Conflict: --para and --nf_dir should not be used at the same time"
             )
+        if self.uge and self.nextflow_config_dir:
+            self.die(
+                "Conflict: --uge and --nf_dir should not be used at the same time"
+            )
+        if self.uge and self.para:
+            self.die(
+                "Conflict: --uge and --para should not be used at the same time"
+            )            
         # check that required config files are here
         if not os.path.isdir(self.nextflow_config_dir):
             self.die(
@@ -784,9 +805,9 @@ class Toga:
         print(
             "#### STEP 7: Execute CESAR jobs: parallel step (the most time consuming)\n"
         )
-        self.__run_cesar_jobs()
+        self.__run_cesar_jobs() #TODO Test
         self.__time_mark("Cesar jobs done")
-        self.__check_cesar_completeness()
+        self.__check_cesar_completeness() #TODO Test
 
         # 8) parse CESAR output, create bed / fasta files
         print("#### STEP 8: Merge STEP 7 output\n")
@@ -796,7 +817,7 @@ class Toga:
         # 9) classify projections/genes as lost/intact
         # also measure projections confidence levels
         print("#### STEP 9: Gene loss pipeline classification\n")
-        self.__transcript_quality()  # maybe remove -> not used anywhere
+        self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
 
@@ -904,6 +925,7 @@ class Toga:
         # collect transcripts not intersected at all here
         self._transcripts_not_intersected = self.__get_fst_col(rejected_path)
 
+
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
         # get timestamp to name the project and create a dir for that
@@ -916,6 +938,23 @@ class Toga:
 
         if self.para:  # run jobs with para, skip nextflow
             cmd = f'para make {project_name} {self.chain_cl_jobs_combined} -q="short"'
+            print(f"Calling {cmd}")
+            rc = subprocess.call(cmd, shell=True)
+        # If using UGE create jobscript
+        elif self.uge:
+            job_name = f"{self.project_name}_chain_feats"
+            self.chain_cl_jobscript = os.path.join(self.temp_wd, "chain_cl_jobscript")
+            write_jobscript(
+                jobname=job_name,
+                logdir=self.uge_log_dir,
+                jobnum=self.chain_jobs,
+                memGB=10,
+                joblist=self.chain_cl_jobs_combined,
+                jobfile=self.chain_cl_jobscript,
+                queue="short.q"
+                )
+            self.temp_files.append(self.chain_cl_jobscript)
+            cmd = f'qsub_beta {self.chain_cl_jobscript}'
             print(f"Calling {cmd}")
             rc = subprocess.call(cmd, shell=True)
         else:  # calling jobs with nextflow
@@ -933,7 +972,7 @@ class Toga:
 
         if rc != 0:  # if process (para or nf) died: terminate execution
             self.die(f"Error! Process {cmd} died")
-        if not self.keep_nf_logs and not self.para:
+        if not self.keep_nf_logs and not (self.para or self.uge):
             # remove nextflow intermediate files
             # if para: this dir doesn't exist
             shutil.rmtree(project_path) if os.path.isdir(project_path) else None
@@ -1384,16 +1423,17 @@ class Toga:
                 )
                 time.sleep(ITER_DURATION)
                 iter_num += 1
-        if not self.keep_nf_logs:
-            # remove nextflow intermediate files
-            print("Removing nextflow temp files")
-            for path in project_paths:
-                shutil.rmtree(path) if os.path.isdir(path) else None
+        # TODO: check if uge needs this
+        # if not self.keep_nf_logs:
+            # # remove nextflow intermediate files
+            # print("Removing nextflow temp files")
+            # for path in project_paths:
+            #     shutil.rmtree(path) if os.path.isdir(path) else None
 
         if any(p.returncode != 0 for p in processes) and die_if_sc_1 is True:
             # some para/nextflow job died: critical issue
             # if die_if_sc_1 is True: terminate the program
-            err = "Error! Some para/nextflow processes died!"
+            err = "Error! Some uge/para/nextflow processes died!"
             self.die(err, 1)
 
     def __run_cesar_jobs(self):
@@ -1454,8 +1494,20 @@ class Toga:
                     f.write(bucket_tasks)
                 joblist_abspath = os.path.abspath(joblist_path)
                 self.temp_files.append(joblist_path)
+
+                jobscript_name = f"cesar_queue_{b}_jobscript"
+                job_name = f"{self.project_name}_cesar_{b}"
+                job_num = len(bucket_tasks)
+
             else:  # nothing to extract, there is a single joblist
                 joblist_abspath = os.path.abspath(self.cesar_combined)
+                jobscript_name = f"cesar_jobscript"
+                job_name = f"{self.project_name}_cesar"
+                job_num = sum(1 for line in open(self.cesar_combined) if line.rstrip())
+
+            jobscript_path = os.path.join(self.temp_wd, jobscript_name)
+            jobscript_abspath = os.path.abspath(jobscript_path)
+            self.temp_files.append(jobscript_path)
 
             # create project directory for logs
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
@@ -1464,7 +1516,26 @@ class Toga:
             project_paths.append(nf_project_path)
 
             # create subprocess object
-            if not self.para:  # create nextflow cmd
+            if self.para:  # create cmd for para
+                memory_mb = b * 1000
+                cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
+                if memory_mb > 0:
+                    cmd += f" --memoryMb={memory_mb}"
+                p = subprocess.Popen(cmd, shell=True)
+            elif self.uge: # create cmd for uge
+                write_jobscript(
+                    jobname=job_name,
+                    logdir=os.path.abspath(self.uge_log_dir),
+                    jobnum=job_num,
+                    memGB=mem_lim,
+                    joblist=joblist_abspath,
+                    jobfile=jobscript_abspath,
+                    )
+                self.temp_files.append(jobscript_path)
+                cmd = f'qsub_beta {jobscript_path}'
+                print(f"Calling {cmd}")
+                p = subprocess.Popen(cmd, shell=True)
+            else:  # create nextflow cmd
                 os.mkdir(nf_project_path) if not os.path.isdir(
                     nf_project_path
                 ) else None
@@ -1473,12 +1544,7 @@ class Toga:
                 if config_file_abspath:
                     cmd += f" -c {config_file_abspath}"
                 p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
-            else:  # create cmd for para
-                memory_mb = b * 1000
-                cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
-                if memory_mb > 0:
-                    cmd += f" --memoryMb={memory_mb}"
-                p = subprocess.Popen(cmd, shell=True)
+            
 
             sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
@@ -1491,7 +1557,7 @@ class Toga:
             processes.append(p)
 
         # push bigmem jobs
-        if self.nextflow_bigmem_config and not self.para:
+        if self.nextflow_bigmem_config and not (self.para or self.uge):
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
@@ -1696,6 +1762,23 @@ class Toga:
                 cmd = f'para make {nf_project_name} {bucket_batch_file} -q="shortmed"'
                 if memory_mb > 0:
                     cmd += f" --memoryMb={memory_mb}"
+                p = subprocess.Popen(cmd, shell=True)
+            elif self.uge:
+                job_name = f"{self.project_name}_RERUN_cesar_q_{bucket}"
+                job_num = len(batch_commands)
+                batch_bucket_jobscript = f"cesar_rerun_{bucket}_jobscript"
+                bucket_batch_file = os.path.join(self.wd, batch_bucket_jobscript)
+                write_jobscript(
+                    jobname=job_name,
+                    logdir=self.uge_log_dir,
+                    jobnum=job_num,
+                    memGB=bucket,
+                    joblist=bucket_batch_file,
+                    jobfile=batch_bucket_jobscript,
+                    )
+                self.temp_files.append(batch_bucket_jobscript)
+                cmd = f'qsub_beta {batch_bucket_jobscript}'
+                print(f"Calling {cmd}")
                 p = subprocess.Popen(cmd, shell=True)
             else:
                 # push jobs using nextflow
@@ -2044,6 +2127,25 @@ def parse_args():
         help="File containing "
         "nextflow config for BIGMEM CESAR jobs. If not provided, these "
         "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET",
+    )
+    app.add_argument(
+        "--uge",
+        "-u",
+        action="store_true",
+        dest="uge",
+        help="Use UGE array jobs to manage cluster jobs instead of nextflow.",
+    )
+    app.add_argument(
+        "--uge_log_dir",
+        "--ulog",
+        default=None,
+        help="Path to directory for storing UGE cluster logs",
+    )
+    app.add_argument(
+        "--uge_max_job",
+        "--umax",
+        default=75_000,
+        help="Maximum number of array jobs",
     )
     app.add_argument(
         "--para",

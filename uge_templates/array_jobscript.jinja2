@@ -7,11 +7,17 @@
 #$ -e {{ logdir }}/{{ jobname }}.e
 #$ -l s_vmem={{ memGB }}G
 #$ -l mem_req={{ memGB }}G
-#$ -t 1-{{ jobnum }}
 {%-if queue %}
 #$ -q {{ queue }}
+#$ -l {{ queue.split('.')[0] }}
 {%- endif %}
 
-sed -n ${SGE_TASK_ID}p {{ jobList }} | bash
+sed -n ${SGE_TASK_ID}p {{ joblist }} | bash
 
+STATUS=$?
+if [[ $STATUS -eq 0 ]]; then
+    echo ${SGE_TASK_ID} > {{ joblist }}_SUCCESS
+fi
+
+exit $STATUS
 

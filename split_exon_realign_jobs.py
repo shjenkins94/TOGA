@@ -226,7 +226,7 @@ def parse_args():
         "--m_f10p",
         action="store_true",
         dest="mask_all_first_10p",
-        help="Automatically mask all inactivating mutations in first 10% of "
+        help="Automatically mask all inactivating mutations in first 10%% of "
              "the reading frame, ignoring ATG codons distribution. "
              "(Default mode in V1.0, not recommended to use in later versions)"
     )
