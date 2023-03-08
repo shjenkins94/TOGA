@@ -766,26 +766,26 @@ class Toga:
         # move chain file filtered
         # define initial values
         # make indexed files for the chain
-        self.__mark_start()
-        print("#### STEP 0: making chain and bed file indexes\n")
-        self.__make_indexed_chain()
-        self.__make_indexed_bed()
-        self.__time_mark("Made indexes")
+        # self.__mark_start()
+        # print("#### STEP 0: making chain and bed file indexes\n")
+        # self.__make_indexed_chain()
+        # self.__make_indexed_bed()
+        # self.__time_mark("Made indexes")
 
-        # 1) make joblist for chain features extraction
-        print("#### STEP 1: Generate extract chain features jobs\n")
-        self.__split_chain_jobs()
-        self.__time_mark("Split chain jobs")
+        # # 1) make joblist for chain features extraction
+        # print("#### STEP 1: Generate extract chain features jobs\n")
+        # self.__split_chain_jobs()
+        # self.__time_mark("Split chain jobs")
 
-        # 2) extract chain features: parallel process
-        print("#### STEP 2: Extract chain features: parallel step\n")
-        self.__extract_chain_features()
-        self.__time_mark("Chain jobs done")
+        # # 2) extract chain features: parallel process
+        # print("#### STEP 2: Extract chain features: parallel step\n")
+        # self.__extract_chain_features()
+        # self.__time_mark("Chain jobs done")
 
-        # 3) create chain features dataset
-        print("#### STEP 3: Merge step 2 output\n")
-        self.__merge_chains_output()
-        self.__time_mark("Chains output merged")
+        # # 3) create chain features dataset
+        # print("#### STEP 3: Merge step 2 output\n")
+        # self.__merge_chains_output()
+        # self.__time_mark("Chains output merged")
 
         # 4) classify chains as orthologous, paralogous, etc using xgboost
         print("#### STEP 4: Classify chains using gradient boosting model\n")
@@ -808,39 +808,39 @@ class Toga:
         )
         self.__run_cesar_jobs() #TODO Test
         self.__time_mark("Cesar jobs done")
-        self.__check_cesar_completeness() #TODO Test
+        # self.__check_cesar_completeness() #TODO Test
 
-        # 8) parse CESAR output, create bed / fasta files
-        print("#### STEP 8: Merge STEP 7 output\n")
-        self.__merge_cesar_output()
-        self.__time_mark("Merged cesar output")
+        # # 8) parse CESAR output, create bed / fasta files
+        # print("#### STEP 8: Merge STEP 7 output\n")
+        # self.__merge_cesar_output()
+        # self.__time_mark("Merged cesar output")
 
-        # 9) classify projections/genes as lost/intact
-        # also measure projections confidence levels
-        print("#### STEP 9: Gene loss pipeline classification\n")
-        self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
-        self.__gene_loss_summary()
-        self.__time_mark("Got gene loss summary")
+        # # 9) classify projections/genes as lost/intact
+        # # also measure projections confidence levels
+        # print("#### STEP 9: Gene loss pipeline classification\n")
+        # self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
+        # self.__gene_loss_summary()
+        # self.__time_mark("Got gene loss summary")
 
-        # TODO: missing genes! no chain chrom???
-        # 10) classify genes as one2one, one2many, etc orthologs
-        print("#### STEP 10: Create orthology relationships table\n")
-        self.__orthology_type_map()
+        # # TODO: missing genes! no chain chrom???
+        # # 10) classify genes as one2one, one2many, etc orthologs
+        # print("#### STEP 10: Create orthology relationships table\n")
+        # self.__orthology_type_map()
 
-        # 11) merge logs containing information about skipped genes,transcripts, etc.
-        print("#### STEP 11: Cleanup: merge parallel steps output files")
-        self.__merge_split_files()
-        self.__check_crashed_cesar_jobs()
-        # Everything is done
+        # # 11) merge logs containing information about skipped genes,transcripts, etc.
+        # print("#### STEP 11: Cleanup: merge parallel steps output files")
+        # self.__merge_split_files()
+        # self.__check_crashed_cesar_jobs()
+        # # Everything is done
 
-        self.__time_mark("Everything is done")
-        if not self.cesar_ok_merged:
-            print("PLEASE NOTE:")
-            print("CESAR RESULTS ARE LIKELY INCOMPLETE")
-            print("Please look at:")
-            print(f"{self.cesar_crashed_batches_log}\n")
-        print(f"Saved results to {self.wd}")
-        self.__left_done_mark()
+        # self.__time_mark("Everything is done")
+        # if not self.cesar_ok_merged:
+        #     print("PLEASE NOTE:")
+        #     print("CESAR RESULTS ARE LIKELY INCOMPLETE")
+        #     print("Please look at:")
+        #     print(f"{self.cesar_crashed_batches_log}\n")
+        # print(f"Saved results to {self.wd}")
+        # self.__left_done_mark()
 
     def __mark_start(self):
         """Indicate that TOGA process have started."""
@@ -1395,7 +1395,7 @@ class Toga:
             jobs = line_data[1]
             jobs_basename_data = os.path.basename(jobs).split("_")
             bucket = jobs_basename_data[-1]
-            if bucket_req != bucket or bucket_req != 0:
+            if bucket_req != bucket:
                 continue
             lines.append(line)
         f.close()
@@ -1439,7 +1439,6 @@ class Toga:
 
     def __run_cesar_jobs(self):
         """Run CESAR jobs using nextflow.
-
         At first -> push joblists, there might be a few of them
         At second -> monitor joblists, wait until all are done.
         """
@@ -1459,197 +1458,76 @@ class Toga:
             buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
         print(f"Pushing {len(buckets)} joblists")
 
-        if not self.uge:
-            # generate buckets, create subprocess instances
-            for b in buckets:
-                # create config file
-                # 0 means that that buckets were not split
-                mem_lim = b if b != 0 else self.cesar_mem_limit
+        # generate buckets, create subprocess instances
+        for b in buckets:
+            # create config file
+            # 0 means that that buckets were not split
+            mem_lim = b if b != 0 else self.cesar_mem_limit
 
-                if not self.local_executor:
-                    # running on cluster, need to create config file
-                    # for this bucket's memory requirement
-                    config_string = self.cesar_config_template.replace(
-                        "${_MEMORY_}", f"{mem_lim}"
-                    )
-                    config_file_path = os.path.join(
-                        self.temp_wd, f"cesar_config_{b}_queue.nf"
-                    )
-                    config_file_abspath = os.path.abspath(config_file_path)
-                    with open(config_file_path, "w") as f:
-                        f.write(config_string)
-                    self.temp_files.append(config_file_path)
-                else:  # no config dir given: use local executor
-                    # OK if there is a single bucket
-                    config_file_abspath = None
-
-                if b != 0:  # extract jobs related to this bucket (if it's not 0)
-                    bucket_tasks = self.__get_cesar_jobs_for_bucket(
-                        self.cesar_combined, str(b)
-                    )
-                    if len(bucket_tasks) == 0:
-                        print(f"There are no jobs in the {b} bucket")
-                        continue
-                    joblist_name = f"cesar_joblist_queue_{b}.txt"
-                    joblist_path = os.path.join(self.temp_wd, joblist_name)
-                    with open(joblist_path, "w") as f:
-                        f.write(bucket_tasks)
-                    joblist_abspath = os.path.abspath(joblist_path)
-                    self.temp_files.append(joblist_path)
-
-                    jobscript_name = f"cesar_queue_{b}_jobscript"
-                    job_name = f"{self.project_name}_cesar_{b}"
-                    job_num = len(bucket_tasks)
-
-                else:  # nothing to extract, there is a single joblist
-                    joblist_abspath = os.path.abspath(self.cesar_combined)
-                    jobscript_name = f"cesar_jobscript"
-                    job_name = f"{self.project_name}_cesar"
-                    job_num = sum(1 for line in open(self.cesar_combined) if line.rstrip())
-
-                jobscript_path = os.path.join(self.temp_wd, jobscript_name)
-                jobscript_abspath = os.path.abspath(jobscript_path)
-                self.temp_files.append(jobscript_path)
-
-                # create project directory for logs
-                nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
-                project_names.append(nf_project_name)
-                nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-                project_paths.append(nf_project_path)
-
-                # create subprocess object
-                if self.para:  # create cmd for para
-                    memory_mb = b * 1000
-                    cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
-                    if memory_mb > 0:
-                        cmd += f" --memoryMb={memory_mb}"
-                    p = subprocess.Popen(cmd, shell=True)
-                elif self.uge: # create cmd for uge
-                    write_jobscript(
-                        jobname=job_name,
-                        logdir=os.path.abspath(self.uge_log_dir),
-                        jobnum=job_num,
-                        memGB=mem_lim,
-                        joblist=joblist_abspath,
-                        jobfile=jobscript_abspath,
-                        )
-                    self.temp_files.append(jobscript_path)
-                    cmd = f'qsub_beta {jobscript_path}'
-                    print(f"Calling {cmd}")
-                    p = subprocess.Popen(cmd, shell=True)
-                else:  # create nextflow cmd
-                    os.mkdir(nf_project_path) if not os.path.isdir(
-                        nf_project_path
-                    ) else None
-
-                    cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {joblist_abspath}"
-                    if config_file_abspath:
-                        cmd += f" -c {config_file_abspath}"
-                    p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
-                
-
-                sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
-
-                # wait for the process if calling processes sequentially
-                # or wait a minute before pushing the next batch in parallel
-                if self.exec_cesar_parts_sequentially is True:
-                    p.wait()
-                else:
-                    time.sleep(CESAR_PUSH_INTERVAL)
-                processes.append(p)
-
-
-            # push bigmem jobs
-            if self.nextflow_bigmem_config and not self.para:
-                # if provided: push bigmem jobs also
-                nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
-                nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-                nf_cmd = (
-                    f"nextflow {self.NF_EXECUTE} "
-                    f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
+            if not self.local_executor and not self.uge and not self.para:
+                # running on cluster, need to create config file
+                # for this bucket's memory requirement
+                config_string = self.cesar_config_template.replace(
+                    "${_MEMORY_}", f"{mem_lim}"
                 )
-                # if bigmem joblist is empty or not exist: do nothing
-                is_file = os.path.isfile(self.cesar_bigmem_jobs)
-                if is_file:  # if a file: we can open and count lines
-                    f = open(self.cesar_bigmem_jobs, "r")
-                    big_lines_num = len(f.readlines())
-                    f.close()
-                else:  # file doesn't exist, equivalent to an empty file in our case
-                    big_lines_num = 0
-                # if it's empty: do nothing
-                if big_lines_num == 0:
-                    pass
-                else:
-                    os.mkdir(nf_project_path) if not os.path.isdir(
-                        nf_project_path
-                    ) else None
-                    project_paths.append(nf_project_path)
-                    p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-                    sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
-                    if self.exec_cesar_parts_sequentially:
-                        p.wait()
-                    processes.append(p)
-            elif self.para and self.para_bigmem:
-                # if requested: push bigmem jobs with para
-                is_file = os.path.isfile(self.cesar_bigmem_jobs)
-                bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
-                if is_file:  # if a file: we can open and count lines
-                    f = open(self.cesar_bigmem_jobs, "r")
-                    big_lines_num = len(f.readlines())
-                    f.close()
-                else:  # file doesn't exist, equivalent to an empty file in our case
-                    big_lines_num = 0
-                # if it's empty: do nothing
-                if big_lines_num == 0:
-                    pass
-                else:  # there ARE cesar bigmem jobs: push them
-                    memory_mb = 500 * 1000  # TODO: bigmem memory param
-                    cmd = (
-                        f"para make {bm_project_name} {self.cesar_bigmem_jobs} "
-                        f'-q="bigmem" --memoryMb={memory_mb}'
-                    )
-                    p = subprocess.Popen(cmd, shell=True)
-                    processes.append(p)
-        else:
-            # for each bucket create at least one jobscript (if not empty)
-            jobscript_paths = [] # jobscripts
-                    # generate buckets, create subprocess instances
-            for b in buckets:
-                # create config file
-                # 0 means that that buckets were not split
-                mem_lim = b if b != 0 else self.cesar_mem_limit
+                config_file_path = os.path.join(
+                    self.temp_wd, f"cesar_config_{b}_queue.nf"
+                )
+                config_file_abspath = os.path.abspath(config_file_path)
+                with open(config_file_path, "w") as f:
+                    f.write(config_string)
+                self.temp_files.append(config_file_path)
+            else:  # no config dir given: use local executor
+                # OK if there is a single bucket
+                config_file_abspath = None
 
-                # if b == 0, then all tasks go in bucket tasks
+            if b != 0:  # extract jobs related to this bucket (if it's not 0)
                 bucket_tasks = self.__get_cesar_jobs_for_bucket(
-                        self.cesar_combined, str(b)
-                    )
+                    self.cesar_combined, str(b)
+                )
                 if len(bucket_tasks) == 0:
                     print(f"There are no jobs in the {b} bucket")
                     continue
+                joblist_name = f"cesar_joblist_queue_{b}.txt"
+                joblist_path = os.path.join(self.temp_wd, joblist_name)
+                with open(joblist_path, "w") as f:
+                    f.write(bucket_tasks)
+                joblist_abspath = os.path.abspath(joblist_path)
+                self.temp_files.append(joblist_path)
+            else:  # nothing to extract, there is a single joblist
+                joblist_abspath = os.path.abspath(self.cesar_combined)
 
-                bucket_chunks = [
-                    bucket_tasks[i * self.uge_max_job:(i + 1) * self.uge_max_job] 
-                    for i 
-                    in range((len(bucket_tasks) + self.uge_max_job - 1) // self.uge_max_job)
-                    ]
+            # create project directory for logs
+            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
+            project_names.append(nf_project_name)
+            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+            project_paths.append(nf_project_path)
 
-                for c in bucket_chunks:
-                    # Write joblist for chunk
-                    joblist_name = f"cesar_joblist_queue_{b}_{c}.txt"
-                    joblist_path = os.path.join(self.temp_wd, joblist_name)
-                    with open(joblist_path, "w") as f:
-                        f.write(bucket_chunks[c])
-                    joblist_abspath = os.path.abspath(joblist_path)
-                    self.temp_files.append(joblist_path)
-                    # Write jobscript for chunk
-                    jobscript_name = f"cesar_queue_{b}_{c}_jobscript"
-                    jobscript_path = os.path.join(self.temp_wd, jobscript_name)
-                    jobscript_abspath = os.path.abspath(jobscript_path)
-                    self.temp_files.append(jobscript_path)
-                    # Variables for each jobscript
-                    job_name = f"{self.project_name}_cesar_{b}_{c}"
-                    job_num = len(bucket_chunks[c])
-                    write_jobscript(
+            # create subprocess object
+            if not self.para and not self.uge:  # create nextflow cmd
+                os.mkdir(nf_project_path) if not os.path.isdir(
+                    nf_project_path
+                ) else None
+
+                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {joblist_abspath}"
+                if config_file_abspath:
+                    cmd += f" -c {config_file_abspath}"
+                p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
+            elif not self.uge:  # create cmd for para
+                memory_mb = b * 1000
+                cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
+                if memory_mb > 0:
+                    cmd += f" --memoryMb={memory_mb}"
+                p = subprocess.Popen(cmd, shell=True)
+            else: # create command for UGE
+                jobscript_name = f"cesar_queue_{b}_jobscript"
+                jobscript_path = os.path.join(self.temp_wd, jobscript_name)
+                jobscript_abspath = os.path.abspath(jobscript_path)
+                self.temp_files.append(jobscript_path)
+                # Variables for each jobscript
+                job_name = f"{self.project_name}_cesar_{b}"
+                job_num = sum(1 for line in open(joblist_path) if line.rstrip()) 
+                write_jobscript(
                         jobname=job_name,
                         logdir=os.path.abspath(self.uge_log_dir),
                         jobnum=job_num,
@@ -1657,20 +1535,69 @@ class Toga:
                         joblist=joblist_abspath,
                         jobfile=jobscript_abspath,
                         )
-                    jobscript_paths.append(jobscript_path)
-
-            for js in jobscript_paths:
-                cmd = f'qsub_beta {jobscript_path}'
                 cmd = f'qsub_beta {jobscript_path}'
                 p = subprocess.Popen(cmd, shell=True)
-                sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
-                # wait for the process if calling processes sequentially
-                # or wait a minute before pushing the next batch in parallel
-                if self.exec_cesar_parts_sequentially is True:
+            sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
+
+            # wait for the process if calling processes sequentially
+            # or wait a minute before pushing the next batch in parallel
+            if self.exec_cesar_parts_sequentially is True:
+                p.wait()
+            else:
+                time.sleep(CESAR_PUSH_INTERVAL)
+            processes.append(p)
+
+        # push bigmem jobs
+        if self.nextflow_bigmem_config and not self.para and not self.uge:
+            # if provided: push bigmem jobs also
+            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+            nf_cmd = (
+                f"nextflow {self.NF_EXECUTE} "
+                f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
+            )
+            # if bigmem joblist is empty or not exist: do nothing
+            is_file = os.path.isfile(self.cesar_bigmem_jobs)
+            if is_file:  # if a file: we can open and count lines
+                f = open(self.cesar_bigmem_jobs, "r")
+                big_lines_num = len(f.readlines())
+                f.close()
+            else:  # file doesn't exist, equivalent to an empty file in our case
+                big_lines_num = 0
+            # if it's empty: do nothing
+            if big_lines_num == 0:
+                pass
+            else:
+                os.mkdir(nf_project_path) if not os.path.isdir(
+                    nf_project_path
+                ) else None
+                project_paths.append(nf_project_path)
+                p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
+                sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
+                if self.exec_cesar_parts_sequentially:
                     p.wait()
-                else:
-                    time.sleep(CESAR_PUSH_INTERVAL)
+                processes.append(p)
+        elif self.para and self.para_bigmem and not self.uge:
+            # if requested: push bigmem jobs with para
+            is_file = os.path.isfile(self.cesar_bigmem_jobs)
+            bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            if is_file:  # if a file: we can open and count lines
+                f = open(self.cesar_bigmem_jobs, "r")
+                big_lines_num = len(f.readlines())
+                f.close()
+            else:  # file doesn't exist, equivalent to an empty file in our case
+                big_lines_num = 0
+            # if it's empty: do nothing
+            if big_lines_num == 0:
+                pass
+            else:  # there ARE cesar bigmem jobs: push them
+                memory_mb = 500 * 1000  # TODO: bigmem memory param
+                cmd = (
+                    f"para make {bm_project_name} {self.cesar_bigmem_jobs} "
+                    f'-q="bigmem" --memoryMb={memory_mb}'
+                )
+                p = subprocess.Popen(cmd, shell=True)
                 processes.append(p)
 
         # monitor jobs
@@ -2312,7 +2239,7 @@ def parse_args():
     app.add_argument(
         "--cesar_mem_limit",
         type=int,
-        default=16,
+        default=50,
         help="Ignore genes requiring > N gig to run CESAR",
     )
     app.add_argument(

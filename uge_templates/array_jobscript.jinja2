@@ -7,6 +7,7 @@
 #$ -e {{ logdir }}/{{ jobname }}.e
 #$ -l s_vmem={{ memGB }}G
 #$ -l mem_req={{ memGB }}G
+#$ -t 1-{{ jobnum }}
 {%-if queue %}
 #$ -q {{ queue }}
 #$ -l {{ queue.split('.')[0] }}

@@ -3,7 +3,6 @@
 import argparse
 import sys
 import os
-from collections import defaultdict
 from jinja2 import Template
 
 __author__ = "Scott H. Jenkins, 2023."
@@ -30,7 +29,7 @@ def parse_args():
     args = app.parse_args()
     return args
 
-def write_jobscript(jobname, logdir, jobnum, memGB, joblist, jobfile, queue):
+def write_jobscript(jobname, logdir, jobnum, memGB, joblist, jobfile, queue=None):
     templatefile = os.path.join(os.path.dirname(__file__), '../uge_templates/array_jobscript.jinja2')
     with open(templatefile) as tf:
         content = Template(tf.read()).render(
