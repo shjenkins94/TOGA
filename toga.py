@@ -89,7 +89,6 @@ class Toga:
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
         self.uge = args.uge
-        self.uge_max_job = args.uge_max_job
         self.para = args.para
         self.__check_args_correctness(args)
         self.__modules_addr()
@@ -766,26 +765,26 @@ class Toga:
         # move chain file filtered
         # define initial values
         # make indexed files for the chain
-        # self.__mark_start()
-        # print("#### STEP 0: making chain and bed file indexes\n")
-        # self.__make_indexed_chain()
-        # self.__make_indexed_bed()
-        # self.__time_mark("Made indexes")
+        self.__mark_start()
+        print("#### STEP 0: making chain and bed file indexes\n")
+        self.__make_indexed_chain()
+        self.__make_indexed_bed()
+        self.__time_mark("Made indexes")
 
-        # # 1) make joblist for chain features extraction
-        # print("#### STEP 1: Generate extract chain features jobs\n")
-        # self.__split_chain_jobs()
-        # self.__time_mark("Split chain jobs")
+        # 1) make joblist for chain features extraction
+        print("#### STEP 1: Generate extract chain features jobs\n")
+        self.__split_chain_jobs()
+        self.__time_mark("Split chain jobs")
 
-        # # 2) extract chain features: parallel process
-        # print("#### STEP 2: Extract chain features: parallel step\n")
-        # self.__extract_chain_features()
-        # self.__time_mark("Chain jobs done")
+        # 2) extract chain features: parallel process
+        print("#### STEP 2: Extract chain features: parallel step\n")
+        self.__extract_chain_features()
+        self.__time_mark("Chain jobs done")
 
-        # # 3) create chain features dataset
-        # print("#### STEP 3: Merge step 2 output\n")
-        # self.__merge_chains_output()
-        # self.__time_mark("Chains output merged")
+        # 3) create chain features dataset
+        print("#### STEP 3: Merge step 2 output\n")
+        self.__merge_chains_output()
+        self.__time_mark("Chains output merged")
 
         # 4) classify chains as orthologous, paralogous, etc using xgboost
         print("#### STEP 4: Classify chains using gradient boosting model\n")
@@ -808,39 +807,39 @@ class Toga:
         )
         self.__run_cesar_jobs() #TODO Test
         self.__time_mark("Cesar jobs done")
-        # self.__check_cesar_completeness() #TODO Test
+        self.__check_cesar_completeness() #TODO Test
 
-        # # 8) parse CESAR output, create bed / fasta files
-        # print("#### STEP 8: Merge STEP 7 output\n")
-        # self.__merge_cesar_output()
-        # self.__time_mark("Merged cesar output")
+        # 8) parse CESAR output, create bed / fasta files
+        print("#### STEP 8: Merge STEP 7 output\n")
+        self.__merge_cesar_output()
+        self.__time_mark("Merged cesar output")
 
-        # # 9) classify projections/genes as lost/intact
-        # # also measure projections confidence levels
-        # print("#### STEP 9: Gene loss pipeline classification\n")
-        # self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
-        # self.__gene_loss_summary()
-        # self.__time_mark("Got gene loss summary")
+        # 9) classify projections/genes as lost/intact
+        # also measure projections confidence levels
+        print("#### STEP 9: Gene loss pipeline classification\n")
+        self.__transcript_quality()  # maybe remove -> not used anywhere #CHECK
+        self.__gene_loss_summary()
+        self.__time_mark("Got gene loss summary")
 
-        # # TODO: missing genes! no chain chrom???
-        # # 10) classify genes as one2one, one2many, etc orthologs
-        # print("#### STEP 10: Create orthology relationships table\n")
-        # self.__orthology_type_map()
+        # TODO: missing genes! no chain chrom???
+        # 10) classify genes as one2one, one2many, etc orthologs
+        print("#### STEP 10: Create orthology relationships table\n")
+        self.__orthology_type_map()
 
-        # # 11) merge logs containing information about skipped genes,transcripts, etc.
-        # print("#### STEP 11: Cleanup: merge parallel steps output files")
-        # self.__merge_split_files()
-        # self.__check_crashed_cesar_jobs()
-        # # Everything is done
+        # 11) merge logs containing information about skipped genes,transcripts, etc.
+        print("#### STEP 11: Cleanup: merge parallel steps output files")
+        self.__merge_split_files()
+        self.__check_crashed_cesar_jobs()
+        # Everything is done
 
-        # self.__time_mark("Everything is done")
-        # if not self.cesar_ok_merged:
-        #     print("PLEASE NOTE:")
-        #     print("CESAR RESULTS ARE LIKELY INCOMPLETE")
-        #     print("Please look at:")
-        #     print(f"{self.cesar_crashed_batches_log}\n")
-        # print(f"Saved results to {self.wd}")
-        # self.__left_done_mark()
+        self.__time_mark("Everything is done")
+        if not self.cesar_ok_merged:
+            print("PLEASE NOTE:")
+            print("CESAR RESULTS ARE LIKELY INCOMPLETE")
+            print("Please look at:")
+            print(f"{self.cesar_crashed_batches_log}\n")
+        print(f"Saved results to {self.wd}")
+        self.__left_done_mark()
 
     def __mark_start(self):
         """Indicate that TOGA process have started."""
@@ -2132,12 +2131,6 @@ def parse_args():
         "--ulog",
         default=None,
         help="Path to directory for storing UGE cluster logs",
-    )
-    app.add_argument(
-        "--uge_max_job",
-        "--umax",
-        default=75_000,
-        help="Maximum number of array jobs",
     )
     app.add_argument(
         "--para",
