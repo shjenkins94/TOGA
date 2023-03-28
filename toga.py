@@ -116,8 +116,7 @@ class Toga:
         if args.project_name:
             self.project_name = args.project_name
         elif args.project_dir:
-            _dirname = os.path.dirname(args.project_dir)
-            self.project_name = os.path.basename(_dirname)
+            self.project_name = os.path.basename(args.project_dir)
         else:
             self.project_name = self.__gen_project_name()
         # create project dir
