@@ -6,7 +6,7 @@ import os
 from jinja2 import Template
 
 __author__ = "Scott H. Jenkins, 2023."
-__version__ = "1.0"
+__version__ = "1.1"
 __email__ = "shjenkins94@gmail.com"
 
 def parse_args():
@@ -18,6 +18,32 @@ def parse_args():
     app.add_argument("memGB", help="Memory to request in GB")
     app.add_argument("joblist", help="File with list of jobs to run")
     app.add_argument("jobfile", help="File to save jobscript to")
+    app.add_argument(
+        "--pa",
+        action="store_true",
+        dest="pa_script",
+        help="Write jobscript using parallel",
+    )
+    app.add_argument(
+        "--slots", 
+        dest="slots",
+        help="number of parallel jobs to run", 
+        default=4)
+    app.add_argument(
+        "--rt", 
+        dest="runtime",
+        help="runtime for job in seconds", 
+        default=None)
+    app.add_argument(
+        "--tc", 
+        dest="conc",
+        help="number of jobs to run at the same time", 
+        default=None)
+    app.add_argument(
+        "--inc", 
+        help="number of tasks to run in each job", 
+        default=100)
+    
     app.add_argument(
         "--queue",
         default=None,
@@ -43,18 +69,49 @@ def write_jobscript(jobname, logdir, jobnum, memGB, joblist, jobfile, queue=None
         with open(jobfile, "w") as jf:
             jf.write(content)
 
+def write_pa_jobscript(jobname, logdir, jobnum, memGB, joblist, jobfile, slots=4, runtime=None, conc=10, inc=100):
+    templatefile = os.path.join(os.path.dirname(__file__), '../uge_templates/array_pa_jobscript.jinja2')
+    with open(templatefile) as tf:
+        content = Template(tf.read()).render(
+            jobname=jobname,
+            logdir=logdir,
+            jobnum=jobnum,
+            memGB=memGB,
+            joblist=joblist,
+            slots=slots,
+            runtime=runtime,
+            conc=conc,
+            inc=inc,
+        )
+        with open(jobfile, "w") as jf:
+            jf.write(content)
+
 def main():
     """Entry point."""
     args = parse_args()
-    write_jobscript(
+    if args.pa_script:
+        write_pa_jobscript(
         args.jobname,
         args.logdir,
         args.jobnum,
         args.memGB,
         args.joblist,
         args.jobfile,
-        args.queue,
+        args.slots,
+        args.runtime,
+        args.conc,
+        args.inc
     )
+    else:
+        write_jobscript(
+            args.jobname,
+            args.logdir,
+            args.jobnum,
+            args.memGB,
+            args.joblist,
+            args.jobfile,
+            args.queue,
+        )
 
 if __name__ == "__main__":
     main()

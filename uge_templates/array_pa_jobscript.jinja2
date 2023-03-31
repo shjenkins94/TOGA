@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -V
+#$ -sync y
+#$ -t 1-{{ jobnum }}:{{ inc }}
+{%-if conc %}
+#$ -tc {{ conc }}
+{%- endif %}
+#$ -pe def_slot {{ slots }}
+#$ -l s_vmem={{ memGB }}G
+#$ -l mem_req={{ memGB }}G
+{%-if runtime %}
+#$ -l d_rt={{ runtime }}
+#$ -l s_rt={{ runtime }}
+{%- endif %}
+#$ -o {{ logdir }}/{{ jobname }}.o
+#$ -e {{ logdir }}/{{ jobname }}.e
+#$ -N {{ jobname }}
+
+let QUIT_ID=${SGE_TASK_ID}+{{ inc }}
+let END_ID=${QUIT_ID}-1
+
+sed -n "${SGE_TASK_ID},${END_ID}p;${QUIT_ID}q" {{ joblist }} | 
+parallel -j {{ slots }} --halt soon,fail=1 --retries 3 --joblog pa_logs/{{ joblist }}_${SGE_TASK_ID}.log
+
+exit $?

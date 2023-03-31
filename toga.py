@@ -30,7 +30,7 @@ from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import _collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import _add_transcripts_to_missing
-from modules.write_uge_jobscripts import write_jobscript
+from modules.write_uge_jobscripts import write_jobscript,write_pa_jobscript
 
 # from modules.common import eprint
 from modules.stitch_fragments import stitch_scaffolds
@@ -1525,7 +1525,7 @@ class Toga:
                 # Variables for each jobscript
                 job_name = f"{self.project_name}_cesar_{b}"
                 job_num = sum(1 for line in open(joblist_path) if line.rstrip()) 
-                write_jobscript(
+                write_pa_jobscript(
                         jobname=job_name,
                         logdir=os.path.abspath(self.uge_log_dir),
                         jobnum=job_num,
