@@ -21,6 +21,6 @@ let QUIT_ID=${SGE_TASK_ID}+{{ inc }}
 let END_ID=${QUIT_ID}-1
 
 sed -n "${SGE_TASK_ID},${END_ID}p;${QUIT_ID}q" {{ joblist }} | 
-parallel -j {{ slots }} --halt soon,fail=1 --retries 3 --joblog pa_logs/{{ joblist }}_${SGE_TASK_ID}.log
+parallel -j {{ slots }} --halt soon,fail=1 --retries 3 --joblog {{ joblist }}_${SGE_TASK_ID}.log
 
 exit $?
