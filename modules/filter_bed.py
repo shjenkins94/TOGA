@@ -15,7 +15,7 @@ try:
     from modules.common import eprint
 except ImportError:
     from common import die
-    from commom import eprint
+    from common import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
