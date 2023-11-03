@@ -15,7 +15,7 @@
         {
             "step": "run_cesar",
             "queue": "short.q",
-            "memGB": 64,
+            "memGB": 4,
             "extra_args": ["-l short"],
             "conc": 10,
             "slots": 4,
@@ -24,7 +24,7 @@
         {
             "step": "rerun_cesar",
             "queue": "short.q",
-            "memGB": 64,
+            "memGB": 4,
             "extra_args": ["-l short"],
             "conc": 10,
             "slots": 4,

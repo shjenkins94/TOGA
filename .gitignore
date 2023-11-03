@@ -46,6 +46,8 @@ ML__old
 
 # debug and test
 micro_test_out/*
+micro_uge_test_out/*
+micro_uge_bucket_test_out/*
 *.tsv
 *.png
 ML/.ipynb_checkpoints/
