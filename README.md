@@ -3,7 +3,7 @@
 <img src="https://github.com/hillerlab/TOGA/blob/master/supply/logo.png" width="500">
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![version](https://img.shields.io/badge/version-1.1.6-blue)
+![version](https://img.shields.io/badge/version-1.1.7.dev-blue)
 [![DOI](https://zenodo.org/badge/277817661.svg)](https://zenodo.org/badge/latestdoi/277817661)
 [![License](https://img.shields.io/github/license/hillerlab/TOGA.svg)](https://github.com/hillerlab/TOGA/blob/master/LICENSE)
 [![made-with-Nextflow](https://img.shields.io/badge/Made%20with-Nextflow-23aa62.svg)](https://www.nextflow.io/)
@@ -36,7 +36,7 @@ This document provides version-specific updates, including new features, bug fix
 ## Installation
 
 TOGA is compatible with Linux and MacOS, including M1-based systems.
-It has been tested and verified to work with Python versions 3.9 and higher.
+It is recommended to use Python version 3.11.
 
 It is highly recommended to have access to computational cluster, but
 for small or partial genomes with short genes a desktop PC will be enough.
@@ -103,7 +103,7 @@ These jobs are expected to be short and not memory consuming, so 1 hour of runti
 and 10Gb of memory would be enough.
 4) Create "call_cesar_config_template.nf" file.
 This configuration file is for CESAR jobs.
-These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hors for them.
+These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hours for them.
 You don't have to provide an exact amount of memory for these jobs, TOGA will compute this itself.
 Please write a placeholder instead, as follows: process.memory = "${\_MEMORY\_}G".
 
@@ -293,7 +293,7 @@ It accepts the following arguments:
 Show help message and exit.
 Calling ./toga.py without arguments does the same.
 
-##### --project_folder PROJECT_FOLDER
+##### --project_dir PROJECT_DIR
 
 Project directory.
 TOGA will save all intermediate and output files exactly in this directory.
@@ -443,11 +443,16 @@ Nextflow working directory: from this directory
 nextflow is executed, also there all nextflow log
 files are kept
 
-##### nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
+##### --nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
 
 Directory containing nextflow configuration files for
 cluster, pls see nextflow_config_files/readme.txt for
 details.
+
+##### --quiet, -q
+
+Run without printing messages to console. 
+This does not affect the writing of log _files_: they will be written as usual. 
 
 ## Output reading
 
@@ -494,7 +499,7 @@ Isoforms file for the query.
 TOGA produces 3 fasta files: prot.fasta, codon.fasta nucleotide.fasta.
 It saves both the reference and predicted query sequences.
 - prot.fasta contains protein sequences of reference genes and predicted transcripts.
-- codon.fasta contains codon alignments, corrected for frameshiring insertions and deletions
+- codon.fasta contains codon alignments, corrected for frameshifting insertions and deletions
 - nucleotide.fasta contains exon nucleotide alignments
 
 ### orthology_classification.tsv
@@ -519,9 +524,9 @@ TOGA identifies the following classes:
 2) PG - no orthologous chains identified, TOGA projected transcripts via paralogous
 chains and cannot make any conclusion.
 3) PM - partial & missing. Most of the projection lies outside scaffold borders.
-4) L - clearly lost.
-5) M - missing, assembly gaps mask >50% of the prediction CDS.
-6) G - "grey", there are inactivating mutations but not enough evidence
+4) M - missing, assembly gaps mask >50% of the prediction CDS.
+5) L - clearly lost.
+6) UL - "uncertain loss", there are inactivating mutations but not enough evidence
 for "clearly lost" class. In other words: neither lost nor intact.
 7) PI - partially intact: some fraction of CDS is missing, but most likely
 this is intact.
@@ -649,8 +654,26 @@ you can set the parameter -pre/--precedence like so:
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m merge -pre M#PM#PG#abs#I#PI#UL#L
 ```
 
-Note that the ouputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
+Note that the outputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
 This can be useful when using the same script as outlined in the previous section to get summary statistics.
+
+## Contributing
+
+TOGA uses the python built-in [doctest](https://docs.python.org/3/library/doctest.html) framework.
+In this framework, tests are embedded within each function's docstring.
+To run all the tests in a file, you could run:
+
+```shell
+python3 -m doctest toga.py
+# Or, for verbose output: python3 -m doctest -v toga.py
+```
+
+To run all the tests in all the python files in this project, try:
+
+```shell
+python3 -m doctest $(find . -name "*py")
+# Or, for verbose output: python3 -m doctest -v $(find . -name "*py") 
+```
 
 ## Citation
 

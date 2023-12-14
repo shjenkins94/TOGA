@@ -12,6 +12,7 @@ except ImportError:
     from common import eprint
     from common import die
 
+
 # constants
 STOPS = {"TAG", "TGA", "TAA"}
 # nucleotide %ID and blosum thresholds
@@ -96,7 +97,6 @@ def parse_cesar_out(target, query, v=False):
                 t_exon_num += 1
             # flag ON -> not to increase ref exon number in this >>>> run
             intr_del_switch = True
-            continue
         else:
             # not the intron deletion: put intron_del flag off
             intr_del_switch = False
@@ -138,7 +138,8 @@ def parse_cesar_out(target, query, v=False):
 
         # t is not a space if we are here
         # add codon letters per codon
-        codon_data[codon_num]["ref_codon"] += t
+        t_fixed = t if t != ">" else "-"  # in case it's > we would like to add a -
+        codon_data[codon_num]["ref_codon"] += t_fixed
         codon_data[codon_num]["que_codon"] += q
         # update exon numbers
         codon_data[codon_num]["q_exon_num"] = exon_num
@@ -156,6 +157,9 @@ def parse_cesar_out(target, query, v=False):
             is_split_now = True
         elif t == "-":
             # change nothing
+            continue
+        elif t == ">":
+            # the same as a gap
             continue
         else:  # should never happen, unexpected character in the reference seq
             eprint(f"Broken codon:{str(codon_data[codon_num])}") if v else None
@@ -213,7 +217,9 @@ def parse_args():
     return args
 
 
-def classify_exon(ex_class, incl, pid, blosum, v=False):
+def classify_exon(
+            ex_class: str, incl: bool, pid: float, blosum: float
+        ) -> tuple[bool, str]:
     """Decide what do we do with this exon."""
     # ex_class: how exon aligns
     # A - chain aligns exon perfectly

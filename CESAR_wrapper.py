@@ -173,11 +173,11 @@ def parse_args():
         "--codon_out", "--cdo", default="stdout", help="Save codon alignment"
     )
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose")
-    app.add_argument(
+    app.add_argument(  # TODO: remove everything related to this parameter
         "--exon_flank",
         default=2,
         type=int,
-        help="When intersecting exons and intersected blocks"
+        help="OBSOLETE When intersecting exons and intersected blocks"
         "add flanks to extend exons range.",
     )
     app.add_argument(
@@ -896,25 +896,17 @@ def intersect_exons_blocks_gaps(
             if intersect <= 0:
                 continue
             block_gaps[block_num] = gap_num
-            verbose(
-                "Block num {} in coords t:{}-{} q:{}-{} intersects gap {}-{}".format(
-                    block_num,
-                    block_coords[0],
-                    block_coords[1],
-                    block_coords[2],
-                    block_coords[3],
-                    gap[0],
-                    gap[1],
-                )
+            verbose_msg = (
+                f"Block num {block_num} in coords t:{block_coords[0]}-{block_coords[1]} "
+                f"q:{block_coords[2]}-{block_coords[3]} intersects gap {gap[0]}-{gap[1]}"
             )
+            verbose(verbose_msg)
     # get missed exons to exclude
     missing_exons = [e for e in exon_coordinates.keys() if not exon_num_blocks.get(e)]
-    verbose(
-        "Exons:\n{}\nare not covered by chain".format(
-            ", ".join([str(e) for e in missing_exons])
-        )
-    ) if len(missing_exons) > 0 else None
+    not_covered_str = ", ".join([str(e) for e in missing_exons])
+    verbose(f"Exons:\n{not_covered_str}\nare not covered by chain") if len(missing_exons) > 0 else None
     verbose(f"Flank size is: {flank}")
+
     for exon_num in sorted(exon_num_blocks.keys()):
         verbose(f"Exon {exon_num} intersects blocks {exon_num_blocks.get(exon_num)}")
         verbose(
@@ -1385,6 +1377,7 @@ def get_blosum_score(seq_1, seq_2, matrix):
 
 
 def translate_codons(codons_list):
+    ### OBSOLETE
     """Translate codon table to ref and que AA sequences."""
     ref_AA_seq = []
     que_AA_seq = []
@@ -1487,25 +1480,25 @@ def compute_score(codon_data):
             exon_score[exon_num] = 50  # default value in this case
             continue
 
-        ref_AA, que_AA = translate_codons(codons_in_exon)
-        ref_AA_s_, que_AA_s_ = translate_codons(codons_in_exon_w_splice)
+        ref_aa, que_aa = translate_codons(codons_in_exon)
+        ref_aa_s_, que_aa_s_ = translate_codons(codons_in_exon_w_splice)
         # returns lists
-        ref_AA_s = "".join(ref_AA_s_)
-        que_AA_s = "".join(que_AA_s_)
-        prot_sequences[exon_num] = {"ref": ref_AA_s, "que": que_AA_s}
+        ref_aa_s = "".join(ref_aa_s_)
+        que_aa_s = "".join(que_aa_s_)
+        prot_sequences[exon_num] = {"ref": ref_aa_s, "que": que_aa_s}
 
         # different rule for query, it's possible that value is absent
-        target_AAs_all.extend(ref_AA)  # keep the entire target AA seq for sanity checks
+        target_AAs_all.extend(ref_aa)  # keep the entire target AA seq for sanity checks
         # get absolute and maximal BLOSUM scores
         verbose("Computing BLOSUM score for: ")
-        verbose(str(ref_AA))
-        verbose(str(que_AA))
+        verbose(str(ref_aa))
+        verbose(str(que_aa))
         # blosum score: the blosum score of ref VS query
         # max: reference VS reference
         # it is not ACTUALLY max, but in 99% cases it is
         # in other -> doesn't matter
-        blosum_score = get_blosum_score(ref_AA, que_AA, blosum_matrix)
-        max_blosum_score = get_blosum_score(ref_AA, ref_AA, blosum_matrix)
+        blosum_score = get_blosum_score(ref_aa, que_aa, blosum_matrix)
+        max_blosum_score = get_blosum_score(ref_aa, ref_aa, blosum_matrix)
         if max_blosum_score > 0:
             rel_blosum_score = (blosum_score / max_blosum_score) * 100
         else:
@@ -2585,7 +2578,7 @@ def realign_exons(args):
     pBl = proc_out[3]  # BLOSUM scores for protein sequences
     query_coords = proc_out[4]  # genomic coordinates in the query
     exon_num_corr = proc_out[5]  # in case of intron del: ref/que correspondence
-    # TODO: prot_s variable is unised -> probably no need to compute it upstream?
+    # TODO: prot_s variable is unused -> probably no need to compute it upstream?
     prot_s = proc_out[6]  # protein sequences in query
     codon_s = proc_out[7]  # dict containing sequences of ref and query codons
     aa_cesar_sat = proc_out[8]  # says whether an exon has outstanding quality
