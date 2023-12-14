@@ -13,15 +13,11 @@
         },
         {
             "step": "run_cesar",
-            "conc": 10,
-            "slots": 4,
-            "inc": 25
+            "conc": 10
         },
         {
             "step": "rerun_cesar",
-            "conc": 10,
-            "slots": 4,
-            "inc": 25
+            "conc": 10
         }
     ]
 }

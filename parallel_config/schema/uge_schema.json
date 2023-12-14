@@ -51,7 +51,7 @@
                         "type": ["string"]
                     },
                     "memGB" : {
-                        "description": "Memory to use for step in GB",
+                        "description": "Memory to use for step in GB. Only for extract_chains",
                         "type": ["integer"]
                     },
                     "extra_args" : {
@@ -83,6 +83,17 @@
                 "dependentRequired": {
                     "inc": ["slots"],
                     "slots": ["inc"]
+                },
+                "if": {
+                    "properties": {
+                        "step": {
+                            "const": "extract_chains"
+                        }
+                    }
+                },
+                "then": { "required": ["memGB"] },
+                "else": {
+                    "not": { "required": ["memGB"] }
                 }
             }
         }

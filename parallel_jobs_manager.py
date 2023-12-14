@@ -87,7 +87,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.joblist_path = joblist_path
         self.manager_data = manager_data
         self.label = label
-        self.memory_limit = int(kwargs.get("memory_limit", "16"))
+        self.memory_limit = int(manager_data.get("memory_limit", 16))
 
         self.nf_project_path = manager_data.get("para_dir", None)  # in fact, contains NF logs
         self.keep_logs = manager_data.get("keep_nf_logs", False)
@@ -171,17 +171,20 @@ class ParaStrategy(ParallelizationStrategy):
     def __init__(self):
         super().__init__()
         self._process = None
+        self.memory_limit = None
         self.return_code = None
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Implementation for Para."""
+        self.memory_limit = manager_data.get("memory_limit")
+
         cmd = f"para make {label} {joblist_path} "
         if "queue_name" in kwargs:
             queue_name = kwargs["queue_name"]
             cmd += f" -q={queue_name} "
         # otherwise use default medium queue
-        if "memory_limit" in kwargs:
-            memory_mb = kwargs["memory_limit"] * 1000  # para uses MB instead of GB
+        if self.memory_limit:
+            memory_mb = self.memory_limit * 1000  # para uses MB instead of GB
             cmd += f" --memoryMb={memory_mb}"
         # otherwise use default para's 10Gb
 
@@ -230,7 +233,6 @@ class UGEStrategy(ParallelizationStrategy):
     def __init__(self):
         super().__init__()
         self._process = None
-        self.return_code = None
         self.joblist_path = None
         self.manager_data = None
         self.label = None
@@ -239,10 +241,11 @@ class UGEStrategy(ParallelizationStrategy):
         self.para_config = None
         self.uge_jobscript = None
         self.uge_template = load_template("uge_jobscript.jinja2")
+        self.return_code = None
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
-        """Implementation for UGE
-
+        """
+        Implementation for UGE
         """
         # define parameters
         self.joblist_path = joblist_path
@@ -252,6 +255,7 @@ class UGEStrategy(ParallelizationStrategy):
         self.log_dir = self.manager_data["logs_dir"]
         self.para_config = self.manager_data["para_config"]
         self.cur_step = self.__get_cur_step()
+        self.memory_limit = self.manager_data.get("memory_limit", self.cur_step.get("memGB"))
 
         # get number of jobs
         with open(self.joblist_path, "rbU") as f:
@@ -277,6 +281,7 @@ class UGEStrategy(ParallelizationStrategy):
         for s in self.para_config["steps"]:
             if s["step"] == self.manager_data["step"]:
                 return s
+
         
     def __create_jobscript(self):
         """Render jinja2 template to get jobscript and return jobscript path"""
@@ -286,7 +291,7 @@ class UGEStrategy(ParallelizationStrategy):
             logdir = self.log_dir,
             queue = self.cur_step.get("queue"),
             mem_args = self.para_config["mem_args"],
-            memGB = self.cur_step.get("memGB"),
+            memGB = self.memory_limit,
             time_args = self.para_config["time_args"],
             runtime = self.cur_step.get("runtime"),
             l_extra_args = self.cur_step.get("extra_args"),
@@ -299,7 +304,7 @@ class UGEStrategy(ParallelizationStrategy):
             joblist = self.joblist_path,
         )
 
-        uge_jobscript = os.path.join(self.project_path, f"uge_{self.manager_data['step']}_jobscript.sh")
+        uge_jobscript = os.path.join(self.project_path, f"uge_{self.manager_data['project_name']}_jobscript.sh")
         with open(uge_jobscript, 'w') as f:
             f.write(rendered)
         return uge_jobscript

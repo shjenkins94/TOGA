@@ -1048,12 +1048,12 @@ class Toga:
                     cesar_manager_data["project_name"] = project_name
                     cesar_manager_data["logs_dir"] = project_path
                     cesar_manager_data["step"] = "run_cesar"
+                    cesar_manager_data["memory_limit"] = mem_lim
 
                     jobs_manager = self.__get_paralellizer(self.para_strategy)
                     jobs_manager.execute_jobs(joblist_abspath,
                                             cesar_manager_data,
                                             project_name,
-                                            memory_limit=mem_lim,
                                             wait=self.exec_cesar_parts_sequentially)
                     jobs_managers.append(jobs_manager)
                     time.sleep(Constants.CESAR_PUSH_INTERVAL)
@@ -1181,12 +1181,12 @@ class Toga:
                 cesar_manager_data["project_name"] = project_name
                 cesar_manager_data["logs_dir"] = project_path
                 cesar_manager_data["step"] = "rerun_cesar"
+                cesar_manager_data["memory_limit"] = mem_lim
 
                 jobs_manager = self.__get_paralellizer(self.para_strategy)
                 jobs_manager.execute_jobs(bucket_batch_file,
                                           cesar_manager_data,
                                           project_name,
-                                          memory_limit=mem_lim,
                                           wait=self.exec_cesar_parts_sequentially)
                 jobs_managers.append(jobs_manager)
                 time.sleep(Constants.CESAR_PUSH_INTERVAL)
