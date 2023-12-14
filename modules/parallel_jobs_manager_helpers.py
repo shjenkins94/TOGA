@@ -10,7 +10,7 @@ __author__ = "Bogdan M. Kirilenko"
 ITER_DURATION = 60  # CESAR jobs check interval
 
 
-def monitor_jobs(jobs_managers, die_if_sc_1=False):
+def monitor_jobs(jobs_managers, die_if_sc_1=True):
     """Monitor parallel jobs if many batches run simultaneously."""
     to_log(f"## Stated polling cluster jobs until they done")
     iter_num = 0
@@ -32,7 +32,7 @@ def monitor_jobs(jobs_managers, die_if_sc_1=False):
     if any(jm.return_code != 0 for jm in jobs_managers) and die_if_sc_1 is True:
         # some para/nextflow job died: critical issue
         # if die_if_sc_1 is True: terminate the program
-        err = "Error! Some para/nextflow processes died!"
+        err = "Error! Some parallel jobs died!"
         # TODO: think about the best error class
         raise AssertionError(err)
 

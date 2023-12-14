@@ -797,7 +797,7 @@ class Toga:
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
         timestamp = str(time.time()).split(".")[0]
-        project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
+        project_name = f"chain_feats_{self.project_name}_at_{timestamp}"
         project_path = os.path.join(self.para_dir, project_name)
 
         to_log(f"Extracting chain features, project name: {project_name}")
@@ -1036,7 +1036,7 @@ class Toga:
                 # 0 means that that buckets were not split
                 mem_lim = bucket if bucket != 0 else self.cesar_mem_limit
 
-                project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
+                project_name = f"cesar_jobs_{self.project_name}_at_{timestamp}_q_{bucket}"
                 project_names.append(project_name)
                 joblist_abspath = self.__locate_joblist_abspath(bucket)
 
@@ -1173,7 +1173,7 @@ class Toga:
                 f.write("\n")
                 f.close()
 
-                project_name = f"rerun_cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
+                project_name = f"rerun_cesar_jobs_{self.project_name}_at_{timestamp}_q_{bucket}"
                 project_path = os.path.join(self.para_dir, project_name)
                 project_paths.append(project_path)
 
