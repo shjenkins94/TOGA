@@ -2,7 +2,8 @@ name: toga
 channels:
   - bioconda
   - conda-forge
-  - defaults
+platforms:
+  - linux-64
 dependencies:
   - twobitreader==3.1.7
   - networkx==3.1
@@ -11,12 +12,12 @@ dependencies:
   - scikit-learn==1.2.2
   - joblib==1.2.0
 # Different version from pip
-  - h5py==3.3.0
+  - h5py
   - py-xgboost=1.7.6
 # New
   - jsonschema==4.19.1
   - jinja2==3.1.2
 # For Nextflow
-  - nextflow=23.04.3
+  - nextflow
 # For UGE
-  - parallel=20170422
+  - parallel
