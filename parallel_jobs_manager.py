@@ -258,7 +258,7 @@ class UGEStrategy(ParallelizationStrategy):
         self.memory_limit = self.manager_data.get("memory_limit", self.cur_step.get("memGB"))
 
         # get number of jobs
-        with open(self.joblist_path, "rbU") as f:
+        with open(self.joblist_path, "rb") as f:
             self.jobnum = sum(1 for _ in f)
         
         os.mkdir(self.log_dir) if not os.path.isdir(self.log_dir) else None
@@ -311,14 +311,8 @@ class UGEStrategy(ParallelizationStrategy):
 
     def check_status(self):
         """Check if UGE jobs are done."""
-        if self.return_code:
-            return self.return_code
-        running = self._process.poll() is None
-        if not running:
-            self.return_code = self._process.returncode
-            return self.return_code
-        else:
-            return None
+        return self._process.poll()
+
 
 
 class CustomStrategy(ParallelizationStrategy):
@@ -392,7 +386,8 @@ class ParallelJobsManager:
 
         :return: Status of the jobs.
         """
-        return self.strategy.check_status()
+        self.return_code = self.strategy.check_status()
+        return self.return_code
 
     def terminate_process(self):
         """Terminate associated process."""

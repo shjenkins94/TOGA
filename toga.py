@@ -1095,6 +1095,7 @@ class Toga:
                 project_names.append(project_name)
                 joblist_abspath = self.__locate_joblist_abspath(bucket)
 
+                # Only run if bucket has jobs
                 if joblist_abspath:
                     project_path = os.path.join(self.para_dir, project_name)
                     project_paths.append(project_path)

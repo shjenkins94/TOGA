@@ -19,6 +19,7 @@ def monitor_jobs(jobs_managers, die_if_sc_1=True):
         for job_manager in jobs_managers:
             # check if each process is still running
             rc = job_manager.check_status()
+            to_log(f"Exit code {rc}")
             if rc is None:
                 all_done = False
         if all_done:
@@ -32,7 +33,7 @@ def monitor_jobs(jobs_managers, die_if_sc_1=True):
     if any(jm.return_code != 0 for jm in jobs_managers) and die_if_sc_1 is True:
         # some para/nextflow job died: critical issue
         # if die_if_sc_1 is True: terminate the program
-        err = "Error! Some parallel jobs died!"
+        err = f"Error! Some parallel jobs died!"
         # TODO: think about the best error class
         raise AssertionError(err)
 
