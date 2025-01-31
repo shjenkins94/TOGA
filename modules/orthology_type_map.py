@@ -148,7 +148,7 @@ def read_loss_data(loss_file):
     return proj_to_status
 
 
-def filter_query_transcripts(transcripts, paralogs, trans_to_status):
+def filter_query_transcripts(transcripts, paralogs, trans_to_status, include_classes):
     """Keep intact orthologous transcripts."""
     filt_transcripts = []  # save transcripts we keep
     for trans in transcripts:
@@ -157,7 +157,7 @@ def filter_query_transcripts(transcripts, paralogs, trans_to_status):
             # paralogs do not participate in this game
             continue
         l_status = trans_to_status.get(trans, "N")
-        if l_status not in INCLUDE_CLASSES:
+        if l_status not in include_classes:
             # only grey and intact participate
             continue
         filt_transcripts.append(trans)
@@ -589,6 +589,7 @@ def orthology_type_map(
     loss_data=None,
     save_skipped=None,
     orth_scores_arg=None,
+    include_classes=INCLUDE_CLASSES
 ):
     """Make orthology classification track."""
     to_log(f"{MODULE_NAME_FOR_LOG}: called with the following parameters:")
@@ -619,11 +620,11 @@ def orthology_type_map(
         to_log(f"{MODULE_NAME_FOR_LOG}: got gene loss classifications for {len(trans_to_L_status)} projections in query")
     # remove I/PI/G or paralogous transcripts
     que_transcripts = filter_query_transcripts(
-        que_transcripts_all, q_trans_paralogs, trans_to_L_status
+        que_transcripts_all, q_trans_paralogs, trans_to_L_status, include_classes
     )
     to_log(
         f"{MODULE_NAME_FOR_LOG}: filtered out query transcripts that have loss "
-        f"class not in {INCLUDE_CLASSES}; resulted in {len(que_transcripts)} "
+        f"class not in {include_classes}; resulted in {len(que_transcripts)} "
         f"query transcripts to consider"
     )
     # read reference and query isoform files; orthology is a story about genes
@@ -697,6 +698,7 @@ def parse_args():
         "--save_skipped", "-s", default=None, help="Save orphan transcripts"
     )
     app.add_argument("--orth_scores", "-o", default=None, help="Orthology scores file")
+    app.add_argument("--include_classes", "--ic", default=None, help="List of classes to keep")
     app.add_argument("--log_file", default=None, help="Log file")
     # print help if there are no args
     if len(sys.argv) < 2:
@@ -720,6 +722,7 @@ def main():
         loss_data=args.loss_data,
         save_skipped=args.save_skipped,
         orth_scores_arg=args.orth_scores,
+        include_classes=args.include_classes,
     )
 
 

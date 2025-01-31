@@ -28,7 +28,8 @@ class TogaRescue:
         self.togadir = os.path.abspath(args.togadir)
         self.outdir = os.path.abspath(args.outdir)
         # Options
-        self.ignore_color = args.ignore_color
+        self.ignore_color = args.keep_lost
+        self.include_classes = {"I", "PI", "UL", "L"} if args.keep_lost else None
         self.gene_prefix = args.gene_prefix
 
         # Old TOGA input
@@ -119,6 +120,7 @@ class TogaRescue:
             loss_data=self.loss_summ,
             save_skipped=self.skipped_ref_trans,
             orth_scores_arg=self.pred_scores,
+            include_classes=self.include_classes
         )
 
 
@@ -137,10 +139,10 @@ def parse_args():
         "--isoforms", "-i", type=str, default="", help="Path to target isoforms"
     )
     app.add_argument(
-        "--ignore_color",
+        "--keep_lost",
         action="store_true",
-        dest="ignore_color",
-        help="Disable color filter",
+        dest="keep_lost",
+        help="Keep lost genes",
     )
     app.add_argument(
         "--gene_prefix",
