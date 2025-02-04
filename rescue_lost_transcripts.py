@@ -50,13 +50,17 @@ class TogaRescue:
         # Old TOGA output
         self.query_annotation = os.path.join(self.togadir, "query_annotation.bed")
         # Not having paralogs is probably fine
-        paralogs_file = os.path.join(self.togadir, "temp/paralogs.txt")
-        self.paralogs = paralogs_file if os.path.isfile(paralogs_file) else None
+        if args.paralogs:
+            self.paralogs = args.paralogs
+        elif os.path.isfile(os.path.join(self.togadir, "temp/paralogs.txt")):
+            self.paralogs = os.path.join(self.togadir, "temp/paralogs.txt")
+        else:
+            self.paralogs = None
         self.loss_summ = os.path.join(self.togadir, "loss_summ_data.tsv")
         self.pred_scores = os.path.join(self.togadir, "orthology_scores.tsv")
 
         # New output
-        self.log_file = os.path.join(self.outdir, "log.txt")
+        self.log_file = args.log if args.log else os.path.join(self.outdir, "log.txt")
         # For isoforms
         self.query_isoforms = os.path.join(self.outdir, "query_isoforms.tsv")
         self.query_gene_spans = os.path.join(self.outdir, "query_gene_spans.bed")
@@ -90,6 +94,11 @@ class TogaRescue:
         setup_logger(self.log_file)
         self.__check_input()
 
+        if self.paralogs:
+            to_log("Saving temp paralogs file")
+            shutil.copy2(self.paralogs, self.outdir)
+
+        to_log("Creating query isoforms")
         get_query_isoforms_data(
             self.query_annotation,
             self.query_isoforms,
@@ -136,7 +145,10 @@ def parse_args():
         type=str,
     )
     app.add_argument(
-        "--isoforms", "-i", type=str, default="", help="Path to target isoforms"
+        "--isoforms", "-i", type=str, default="", help="Path to target isoforms (will try to get from togadir/temp)"
+    )
+    app.add_argument(
+        "--paralogs", "-p", type=str, default="", help="Path to query paralogs (will try to get from togadir/temp)"
     )
     app.add_argument(
         "--keep_lost",
@@ -151,9 +163,13 @@ def parse_args():
         help="Prefix to use for query gene identifiers. Default value is TOGA",
     )
 
+    app.add_argument(
+        "--log", type=str, help="Path to log file"
+    )
+
     args = app.parse_args()
 
-    # Check for togadir and temp bed
+    # Check for togadir and bed files
     togadir = os.path.abspath(args.togadir)
     temp_bed = os.path.join(togadir, "temp/toga_filt_ref_annot.bed")
 
